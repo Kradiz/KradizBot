@@ -42,18 +42,19 @@ def handle_message(event):
     user_msg = event.message.text
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4.1",  # หรือ gpt-4 ถ้าบัญชีคุณใช้ได้
+            model="gpt-4",  # เปลี่ยนจาก "gpt-4.1" เป็น "gpt-4"
             messages=[
                 {"role": "system", "content": "คุณคือผู้ช่วยวิเคราะห์หุ้นสำหรับคนไม่มีความรู้เรื่องการลงทุน"},
                 {"role": "user", "content": user_msg}
             ]
         )
-        reply_text = response.choices[0].message.content.strip()
+        reply_text = response['choices'][0]['message']['content']
     except Exception as e:
-        print("GPT ERROR:", e)
+        print(f"OpenAI Error: {e}")  # ดู error ที่เกิดจริง
         reply_text = "ขออภัย ระบบวิเคราะห์ผิดพลาด กรุณาลองใหม่ภายหลัง"
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
