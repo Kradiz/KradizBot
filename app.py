@@ -25,7 +25,7 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 def home():
     return "LINE Bot พร้อมใช้งาน!"
 
-@app.route("/callback", methods=['POST'])  # ใช้ path /callback ที่ LINE ใช้
+@app.route("/callback", methods=['POST'])
 def callback():
     signature = request.headers.get('X-Line-Signature')
     body = request.get_data(as_text=True)
@@ -42,14 +42,15 @@ def handle_message(event):
     user_msg = event.message.text
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4",
+            model="gpt-4.1",  # หรือ gpt-4 ถ้าบัญชีคุณใช้ได้
             messages=[
                 {"role": "system", "content": "คุณคือผู้ช่วยวิเคราะห์หุ้นสำหรับคนไม่มีความรู้เรื่องการลงทุน"},
                 {"role": "user", "content": user_msg}
             ]
         )
-        reply_text = response['choices'][0]['message']['content']
+        reply_text = response.choices[0].message.content.strip()
     except Exception as e:
+        print("GPT ERROR:", e)
         reply_text = "ขออภัย ระบบวิเคราะห์ผิดพลาด กรุณาลองใหม่ภายหลัง"
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
