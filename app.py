@@ -6,7 +6,7 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import openai
 
-# โหลด .env
+# โหลดค่าจากไฟล์ .env
 load_dotenv()
 
 app = Flask(__name__)
@@ -25,9 +25,9 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 def home():
     return "LINE Bot พร้อมใช้งาน!"
 
-@app.route("/webhook", methods=['POST'])
-def webhook():
-    signature = request.headers['X-Line-Signature']
+@app.route("/callback", methods=['POST'])  # ใช้ path /callback ที่ LINE ใช้
+def callback():
+    signature = request.headers.get('X-Line-Signature')
     body = request.get_data(as_text=True)
 
     try:
@@ -40,11 +40,18 @@ def webhook():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_msg = event.message.text
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": f"ช่วยวิเคราะห์หุ้น: {user_msg} ให้คนไม่มีความรู้เลย"}]
-    )
-    reply_text = response['choices'][0]['message']['content']
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "คุณคือผู้ช่วยวิเคราะห์หุ้นสำหรับคนไม่มีความรู้เรื่องการลงทุน"},
+                {"role": "user", "content": user_msg}
+            ]
+        )
+        reply_text = response['choices'][0]['message']['content']
+    except Exception as e:
+        reply_text = "ขออภัย ระบบวิเคราะห์ผิดพลาด กรุณาลองใหม่ภายหลัง"
+
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
 if __name__ == "__main__":
