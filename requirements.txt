@@ -1,0 +1,5 @@
+flask
+openai
+line-bot-sdk==2.4.1
+finnhub-python
+python-dotenv
