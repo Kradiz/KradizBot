@@ -18,17 +18,49 @@ from linebot.models import (
     MessageAction
 )
 
+# =========================
+# CONFIG
+# =========================
+
 load_dotenv()
 
 app = Flask(__name__)
 
 CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
 CHANNEL_SECRET = os.getenv("CHANNEL_SECRET")
+REGISTER_RICH_MENU_ID = os.getenv("REGISTER_RICH_MENU_ID")
+MAIN_RICH_MENU_ID = os.getenv("MAIN_RICH_MENU_ID")
+
+if not CHANNEL_ACCESS_TOKEN:
+    print("WARNING: CHANNEL_ACCESS_TOKEN not found")
+
+if not CHANNEL_SECRET:
+    print("WARNING: CHANNEL_SECRET not found")
 
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
 DB_NAME = "database.db"
+
+
+# =========================
+# RICH MENU
+# =========================
+
+def link_register_menu(user_id):
+    try:
+        if REGISTER_RICH_MENU_ID:
+            line_bot_api.link_rich_menu_to_user(user_id, REGISTER_RICH_MENU_ID)
+    except Exception as e:
+        print("link_register_menu error:", e)
+
+
+def link_main_menu(user_id):
+    try:
+        if MAIN_RICH_MENU_ID:
+            line_bot_api.link_rich_menu_to_user(user_id, MAIN_RICH_MENU_ID)
+    except Exception as e:
+        print("link_main_menu error:", e)
 
 
 # =========================
@@ -43,6 +75,7 @@ def init_db():
     conn = get_conn()
     cur = conn.cursor()
 
+    # ผู้ใช้
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,6 +88,18 @@ def init_db():
     )
     """)
 
+    # งานที่ครูสั่ง
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS assignments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT,
+        classroom TEXT,
+        due_date TEXT,
+        created_at TEXT
+    )
+    """)
+
+    # งานที่นักเรียนส่ง
     cur.execute("""
     CREATE TABLE IF NOT EXISTS submissions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,11 +112,22 @@ def init_db():
     )
     """)
 
+    # สถานะระหว่างคุย เช่น กำลังรอชื่อใบงาน
     cur.execute("""
     CREATE TABLE IF NOT EXISTS states (
         line_user_id TEXT PRIMARY KEY,
         state TEXT,
         data TEXT
+    )
+    """)
+
+    # ประกาศ
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS announcements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT,
+        body TEXT,
+        created_at TEXT
     )
     """)
 
@@ -96,7 +152,11 @@ def save_state(user_id, state, data=""):
 def get_state(user_id):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT state, data FROM states WHERE line_user_id = ?", (user_id,))
+    cur.execute("""
+    SELECT state, data
+    FROM states
+    WHERE line_user_id = ?
+    """, (user_id,))
     row = cur.fetchone()
     conn.close()
     return row
@@ -105,7 +165,10 @@ def get_state(user_id):
 def clear_state(user_id):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("DELETE FROM states WHERE line_user_id = ?", (user_id,))
+    cur.execute("""
+    DELETE FROM states
+    WHERE line_user_id = ?
+    """, (user_id,))
     conn.commit()
     conn.close()
 
@@ -160,6 +223,77 @@ def save_submission(user_id, homework_title, message_type, message_id, file_name
     conn.close()
 
 
+def get_submission_count(user_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+    SELECT COUNT(*)
+    FROM submissions
+    WHERE line_user_id = ?
+    """, (user_id,))
+    count = cur.fetchone()[0]
+    conn.close()
+    return count
+
+
+def get_latest_announcements(limit=5):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+    SELECT title, body, created_at
+    FROM announcements
+    ORDER BY id DESC
+    LIMIT ?
+    """, (limit,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_pending_assignments_for_user(user_id):
+    user = get_user(user_id)
+
+    if not user:
+        return None
+
+    _, _, _, _, classroom = user
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    # ดึงงานของห้องนั้น
+    cur.execute("""
+    SELECT id, title, due_date
+    FROM assignments
+    WHERE classroom = ? OR classroom = 'ALL'
+    ORDER BY id DESC
+    """, (classroom,))
+    assignments = cur.fetchall()
+
+    # ดึงชื่องานที่นักเรียนส่งแล้ว
+    cur.execute("""
+    SELECT homework_title
+    FROM submissions
+    WHERE line_user_id = ?
+    """, (user_id,))
+    submitted_titles = [r[0] for r in cur.fetchall()]
+
+    conn.close()
+
+    pending = []
+
+    for assignment in assignments:
+        assignment_id, title, due_date = assignment
+
+        if title not in submitted_titles:
+            pending.append({
+                "title": title,
+                "due_date": due_date
+            })
+
+    return pending
+
+
 # =========================
 # FLASK ROUTES
 # =========================
@@ -183,51 +317,56 @@ def callback():
 
 
 # =========================
-# REPLY HELPERS
+# MESSAGE HELPERS
 # =========================
 
 def main_menu_text():
     return TextSendMessage(
         text="เมนูหลัก\n\nเลือกคำสั่งที่ต้องการ",
         quick_reply=QuickReply(items=[
-            QuickReplyButton(action=MessageAction(label="ลงทะเบียน", text="ลงทะเบียน")),
             QuickReplyButton(action=MessageAction(label="ส่งงาน", text="ส่งงาน")),
-            QuickReplyButton(action=MessageAction(label="สถานะของฉัน", text="สถานะของฉัน")),
+            QuickReplyButton(action=MessageAction(label="งานค้าง", text="งานค้าง")),
+            QuickReplyButton(action=MessageAction(label="ประกาศ", text="ประกาศจากครู")),
+            QuickReplyButton(action=MessageAction(label="ถามครูนัท", text="ถามครูนัท")),
         ])
     )
 
 
-def reply_register_guide(event):
-    text = (
-        "ระบบลงทะเบียน\n\n"
-        "กรุณาพิมพ์ตามรูปแบบนี้:\n\n"
-        "สมัคร ชื่อ-นามสกุล รหัสนักเรียน ห้อง\n\n"
-        "ตัวอย่าง:\n"
-        "สมัคร สมชาย ใจดี 65001 ม.5/1"
+def register_guide_message():
+    return TextSendMessage(
+        text=(
+            "ระบบลงทะเบียน\n\n"
+            "กรุณาพิมพ์ตามรูปแบบนี้:\n\n"
+            "สมัคร ชื่อ-นามสกุล รหัสนักเรียน ห้อง\n\n"
+            "ตัวอย่าง:\n"
+            "สมัคร สมชาย ใจดี 65001 ม.5/1"
+        )
     )
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=text))
 
 
-def reply_submit_guide(event):
+def need_register_message():
+    return TextSendMessage(
+        text=(
+            "คุณยังไม่ได้ลงทะเบียน\n\n"
+            "กรุณากดเมนูลงทะเบียนด้านล่าง หรือพิมพ์:\n"
+            "ลงทะเบียน"
+        )
+    )
+
+
+def require_registered(event):
     user_id = event.source.user_id
-
     user = get_user(user_id)
+
     if not user:
+        link_register_menu(user_id)
         line_bot_api.reply_message(
             event.reply_token,
-            TextSendMessage(text="กรุณาลงทะเบียนก่อนส่งงาน\nพิมพ์: ลงทะเบียน")
+            need_register_message()
         )
-        return
+        return False
 
-    save_state(user_id, "waiting_homework_title")
-
-    text = (
-        "ระบบส่งงาน\n\n"
-        "กรุณาพิมพ์ชื่องานก่อน\n\n"
-        "ตัวอย่าง:\n"
-        "ใบงานที่ 1"
-    )
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=text))
+    return True
 
 
 # =========================
@@ -236,11 +375,20 @@ def reply_submit_guide(event):
 
 @handler.add(FollowEvent)
 def handle_follow(event):
+    user_id = event.source.user_id
+
+    user = get_user(user_id)
+
+    if user:
+        link_main_menu(user_id)
+        text = "ยินดีต้อนรับกลับเข้าสู่ระบบส่งงาน\n\nกดเมนูด้านล่างเพื่อใช้งานได้เลย"
+    else:
+        link_register_menu(user_id)
+        text = "ยินดีต้อนรับเข้าสู่ระบบส่งงาน\n\nกรุณากดเมนูด้านล่างเพื่อเริ่มลงทะเบียน"
+
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(
-            text="ยินดีต้อนรับเข้าสู่ระบบส่งงาน\n\nพิมพ์: เมนู"
-        )
+        TextSendMessage(text=text)
     )
 
 
@@ -251,16 +399,26 @@ def handle_text(event):
 
     state_row = get_state(user_id)
 
+    # เมนู
     if user_text in ["เมนู", "menu", "Menu"]:
         clear_state(user_id)
-        line_bot_api.reply_message(event.reply_token, main_menu_text())
+
+        if get_user(user_id):
+            link_main_menu(user_id)
+            line_bot_api.reply_message(event.reply_token, main_menu_text())
+        else:
+            link_register_menu(user_id)
+            line_bot_api.reply_message(event.reply_token, register_guide_message())
         return
 
+    # ลงทะเบียน
     if user_text == "ลงทะเบียน":
         clear_state(user_id)
-        reply_register_guide(event)
+        link_register_menu(user_id)
+        line_bot_api.reply_message(event.reply_token, register_guide_message())
         return
 
+    # สมัคร
     if user_text.startswith("สมัคร "):
         parts = user_text.split()
 
@@ -268,17 +426,24 @@ def handle_text(event):
             line_bot_api.reply_message(
                 event.reply_token,
                 TextSendMessage(
-                    text="รูปแบบไม่ถูกต้อง\n\nตัวอย่าง:\nสมัคร สมชาย ใจดี 65001 ม.5/1"
+                    text=(
+                        "รูปแบบไม่ถูกต้อง\n\n"
+                        "ตัวอย่าง:\n"
+                        "สมัคร สมชาย ใจดี 65001 ม.5/1"
+                    )
                 )
             )
             return
 
-        # รองรับชื่อหลายคำ: สมัคร ชื่อ นามสกุล รหัส ห้อง
         classroom = parts[-1]
         student_code = parts[-2]
         full_name = " ".join(parts[1:-2])
 
         register_user(user_id, full_name, student_code, classroom)
+        clear_state(user_id)
+
+        # สมัครสำเร็จแล้วเปลี่ยนเป็นเมนูหลัก
+        link_main_menu(user_id)
 
         line_bot_api.reply_message(
             event.reply_token,
@@ -288,37 +453,108 @@ def handle_text(event):
                     f"ชื่อ: {full_name}\n"
                     f"รหัส: {student_code}\n"
                     f"ห้อง: {classroom}\n\n"
-                    "ต่อไปสามารถพิมพ์: ส่งงาน"
+                    "ตอนนี้สามารถใช้เมนูหลักด้านล่างได้แล้ว"
                 )
             )
         )
         return
 
+    # ถ้ายังไม่ลงทะเบียน ห้ามใช้เมนูอื่น
+    if user_text in ["ส่งงาน", "งานค้าง", "ประกาศจากครู", "ถามครูนัท", "สถานะของฉัน"]:
+        if not require_registered(event):
+            return
+
+    # ส่งงาน
     if user_text == "ส่งงาน":
         clear_state(user_id)
-        reply_submit_guide(event)
+        save_state(user_id, "waiting_homework_title")
+
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "ระบบส่งงาน\n\n"
+                    "กรุณาพิมพ์ชื่องานก่อน\n\n"
+                    "ตัวอย่าง:\n"
+                    "ใบงานที่ 1"
+                )
+            )
+        )
         return
 
+    # งานค้าง
+    if user_text == "งานค้าง":
+        pending = get_pending_assignments_for_user(user_id)
+
+        if pending is None:
+            line_bot_api.reply_message(event.reply_token, need_register_message())
+            return
+
+        if len(pending) == 0:
+            text = "งานค้าง\n\nตอนนี้ยังไม่มีงานค้าง"
+        else:
+            lines = ["งานค้างของคุณ\n"]
+            for i, item in enumerate(pending, start=1):
+                due = item["due_date"] or "-"
+                lines.append(f"{i}. {item['title']}\nกำหนดส่ง: {due}")
+            text = "\n\n".join(lines)
+
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text=text)
+        )
+        return
+
+    # ประกาศจากครู
+    if user_text == "ประกาศจากครู":
+        announcements = get_latest_announcements()
+
+        if not announcements:
+            text = "ประกาศจากครู\n\nตอนนี้ยังไม่มีประกาศ"
+        else:
+            lines = ["ประกาศจากครู\n"]
+            for i, row in enumerate(announcements, start=1):
+                title, body, created_at = row
+                lines.append(
+                    f"{i}. {title}\n"
+                    f"{body}\n"
+                    f"วันที่: {created_at}"
+                )
+            text = "\n\n".join(lines)
+
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text=text)
+        )
+        return
+
+    # ถามครูนัท
+    if user_text == "ถามครูนัท":
+        save_state(user_id, "waiting_question")
+
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "ถามครูนัท\n\n"
+                    "พิมพ์คำถามที่ต้องการถามได้เลย\n"
+                    "เช่น ไม่เข้าใจการบ้านข้อ 3"
+                )
+            )
+        )
+        return
+
+    # สถานะของฉัน
     if user_text == "สถานะของฉัน":
         user = get_user(user_id)
 
         if not user:
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="ยังไม่ได้ลงทะเบียน\nพิมพ์: ลงทะเบียน")
-            )
+            link_register_menu(user_id)
+            line_bot_api.reply_message(event.reply_token, need_register_message())
             return
 
         _, role, full_name, student_code, classroom = user
-
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-        SELECT COUNT(*) FROM submissions
-        WHERE line_user_id = ?
-        """, (user_id,))
-        count = cur.fetchone()[0]
-        conn.close()
+        count = get_submission_count(user_id)
 
         line_bot_api.reply_message(
             event.reply_token,
@@ -334,7 +570,7 @@ def handle_text(event):
         )
         return
 
-    # ถ้าอยู่ในขั้นตอนส่งงาน
+    # จัดการ state ระหว่างส่งงาน/ถามครู
     if state_row:
         state, data = state_row
 
@@ -353,21 +589,51 @@ def handle_text(event):
             )
             return
 
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text="ไม่พบคำสั่ง\nพิมพ์: เมนู")
-    )
+        if state == "waiting_question":
+            question = user_text
+            clear_state(user_id)
+
+            # ตอนนี้ยังไม่เชื่อม AI/ครูจริง ให้ตอบรับไว้ก่อน
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=(
+                        "รับคำถามแล้ว\n\n"
+                        f"คำถามของคุณ:\n{question}\n\n"
+                        "ตอนนี้ระบบยังไม่ได้เชื่อม AI หรือส่งต่อให้ครูจริง\n"
+                        "ขั้นต่อไปสามารถเพิ่มระบบแจ้งเตือนครูได้"
+                    )
+                )
+            )
+            return
+
+    # fallback
+    if get_user(user_id):
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text="ไม่พบคำสั่ง\nกรุณากดเมนูด้านล่าง หรือพิมพ์: เมนู")
+        )
+    else:
+        link_register_menu(user_id)
+        line_bot_api.reply_message(
+            event.reply_token,
+            need_register_message()
+        )
 
 
 @handler.add(MessageEvent, message=ImageMessage)
 def handle_image(event):
     user_id = event.source.user_id
+
+    if not require_registered(event):
+        return
+
     state_row = get_state(user_id)
 
     if not state_row or state_row[0] != "waiting_homework_file":
         line_bot_api.reply_message(
             event.reply_token,
-            TextSendMessage(text="หากต้องการส่งงาน กรุณาพิมพ์: ส่งงาน")
+            TextSendMessage(text="หากต้องการส่งงาน กรุณากดเมนู ส่งงาน ก่อน")
         )
         return
 
@@ -399,12 +665,16 @@ def handle_image(event):
 @handler.add(MessageEvent, message=FileMessage)
 def handle_file(event):
     user_id = event.source.user_id
+
+    if not require_registered(event):
+        return
+
     state_row = get_state(user_id)
 
     if not state_row or state_row[0] != "waiting_homework_file":
         line_bot_api.reply_message(
             event.reply_token,
-            TextSendMessage(text="หากต้องการส่งงาน กรุณาพิมพ์: ส่งงาน")
+            TextSendMessage(text="หากต้องการส่งงาน กรุณากดเมนู ส่งงาน ก่อน")
         )
         return
 
