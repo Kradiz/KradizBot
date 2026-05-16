@@ -1,9 +1,17 @@
 import os
 import json
+from datetime import datetime
 
 import gspread
 from google.oauth2.service_account import Credentials
 
+
+# =========================
+# CONFIG
+# =========================
+
+GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "").strip()
+GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON", "").strip()
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -11,90 +19,117 @@ SCOPES = [
 ]
 
 
-def get_google_client():
+# =========================
+# GOOGLE CLIENT
+# =========================
+
+def get_credentials():
     """
-    ใช้ได้ทั้งในเครื่องและบน Render
-
-    ในเครื่อง:
-    - ใช้ไฟล์ credentials.json
-
-    บน Render:
-    - ใช้ GOOGLE_CREDENTIALS_JSON จาก Environment
+    ใช้ได้ 2 แบบ:
+    1. บน Render ใช้ GOOGLE_CREDENTIALS_JSON
+    2. ในเครื่อง ถ้าไม่มี env จะใช้ credentials.json
     """
 
-    credentials_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    if GOOGLE_CREDENTIALS_JSON:
+        info = json.loads(GOOGLE_CREDENTIALS_JSON)
+        return Credentials.from_service_account_info(info, scopes=SCOPES)
 
-    if credentials_json:
-        info = json.loads(credentials_json)
-        creds = Credentials.from_service_account_info(info, scopes=SCOPES)
-    else:
-        creds = Credentials.from_service_account_file(
+    if os.path.exists("credentials.json"):
+        return Credentials.from_service_account_file(
             "credentials.json",
             scopes=SCOPES
         )
 
+    raise FileNotFoundError(
+        "ไม่พบ GOOGLE_CREDENTIALS_JSON และไม่พบไฟล์ credentials.json"
+    )
+
+
+def get_client():
+    creds = get_credentials()
     return gspread.authorize(creds)
 
 
 def get_sheet():
-    spreadsheet_id = os.getenv("GOOGLE_SHEET_ID")
-
-    if not spreadsheet_id:
+    if not GOOGLE_SHEET_ID:
         raise Exception("ไม่พบ GOOGLE_SHEET_ID ใน .env หรือ Render Environment")
 
-    client = get_google_client()
-    return client.open_by_key(spreadsheet_id)
+    client = get_client()
+    return client.open_by_key(GOOGLE_SHEET_ID)
 
 
-def get_or_create_worksheet(sheet, worksheet_name, rows=1000, cols=30):
+def get_or_create_worksheet(spreadsheet, title, headers):
+    """
+    ถ้าไม่มีแท็บ ให้สร้างใหม่
+    ถ้ามีแล้ว แต่แถวแรกว่าง ให้ใส่หัวตาราง
+    """
+
     try:
-        return sheet.worksheet(worksheet_name)
+        ws = spreadsheet.worksheet(title)
     except gspread.WorksheetNotFound:
-        return sheet.add_worksheet(
-            title=worksheet_name,
-            rows=rows,
-            cols=cols
+        ws = spreadsheet.add_worksheet(
+            title=title,
+            rows=1000,
+            cols=max(len(headers), 10)
+        )
+        ws.append_row(headers)
+        return ws
+
+    values = ws.get_all_values()
+
+    if not values:
+        ws.append_row(headers)
+
+    return ws
+
+
+# =========================
+# APPEND USERS
+# =========================
+
+def append_user(timestamp, line_user_id, full_name, student_code, classroom, role):
+    """
+    บันทึกข้อมูลลงทะเบียนลงแท็บ users
+    """
+
+    try:
+        spreadsheet = get_sheet()
+
+        headers = [
+            "timestamp",
+            "line_user_id",
+            "full_name",
+            "student_code",
+            "classroom",
+            "role"
+        ]
+
+        ws = get_or_create_worksheet(
+            spreadsheet,
+            "users",
+            headers
         )
 
+        ws.append_row([
+            timestamp,
+            line_user_id,
+            full_name,
+            student_code,
+            classroom,
+            role
+        ])
 
-def safe_append_row(worksheet_name, row):
-    """
-    เขียนข้อมูลลง Google Sheet
-    ถ้า error จะ print ออกมา แต่ไม่ทำให้บอทล้ม
-    """
-    try:
-        sheet = get_sheet()
-        ws = get_or_create_worksheet(sheet, worksheet_name)
-        ws.append_row(row, value_input_option="USER_ENTERED")
+        print("Google Sheets append user success:", full_name)
         return True
+
     except Exception as e:
-        print(f"Google Sheets append error [{worksheet_name}]:", e)
+        print("Google Sheets append error [users]:", e)
         return False
 
 
-def safe_get_records(worksheet_name):
-    """
-    อ่านข้อมูลจาก Google Sheet
-    """
-    try:
-        sheet = get_sheet()
-        ws = get_or_create_worksheet(sheet, worksheet_name)
-        return ws.get_all_records()
-    except Exception as e:
-        print(f"Google Sheets read error [{worksheet_name}]:", e)
-        return []
-
-
-def append_user(timestamp, line_user_id, full_name, student_code, classroom, role="student"):
-    return safe_append_row("users", [
-        timestamp,
-        line_user_id,
-        full_name,
-        student_code,
-        classroom,
-        role
-    ])
-
+# =========================
+# APPEND SUBMISSIONS
+# =========================
 
 def append_submission(
     timestamp,
@@ -107,90 +142,150 @@ def append_submission(
     line_message_id,
     file_name
 ):
-    return safe_append_row("submissions", [
-        timestamp,
-        line_user_id,
-        full_name,
-        student_code,
-        classroom,
-        homework_title,
-        message_type,
-        line_message_id,
-        file_name
-    ])
+    """
+    บันทึกการส่งงานลงแท็บ submissions
+    """
+
+    try:
+        spreadsheet = get_sheet()
+
+        headers = [
+            "timestamp",
+            "line_user_id",
+            "full_name",
+            "student_code",
+            "classroom",
+            "homework_title",
+            "message_type",
+            "line_message_id",
+            "file_name"
+        ]
+
+        ws = get_or_create_worksheet(
+            spreadsheet,
+            "submissions",
+            headers
+        )
+
+        ws.append_row([
+            timestamp,
+            line_user_id,
+            full_name,
+            student_code,
+            classroom,
+            homework_title,
+            message_type,
+            line_message_id,
+            file_name
+        ])
+
+        print("Google Sheets append submission success:", homework_title)
+        return True
+
+    except Exception as e:
+        print("Google Sheets append error [submissions]:", e)
+        return False
 
 
-def get_users():
-    return safe_get_records("users")
-
-
-def get_submissions():
-    return safe_get_records("submissions")
-
-
-def get_assignments():
-    return safe_get_records("assignments")
-
-
-def get_announcements():
-    return safe_get_records("announcements")
-
-
-def get_assignments_for_classroom(classroom):
-    assignments = get_assignments()
-    result = []
-
-    for item in assignments:
-        item_classroom = str(item.get("classroom", "")).strip()
-
-        if item_classroom == str(classroom).strip() or item_classroom.upper() == "ALL":
-            result.append(item)
-
-    def sort_key(x):
-        try:
-            return int(x.get("assignment_id", 999999))
-        except:
-            return 999999
-
-    result.sort(key=sort_key)
-    return result
-
-
-def get_submissions_by_user(line_user_id):
-    submissions = get_submissions()
-    result = []
-
-    for item in submissions:
-        if str(item.get("line_user_id", "")).strip() == str(line_user_id).strip():
-            result.append(item)
-
-    return result
-
+# =========================
+# ASSIGNMENTS
+# =========================
 
 def get_pending_assignments(line_user_id, classroom):
-    assignments = get_assignments_for_classroom(classroom)
-    submissions = get_submissions_by_user(line_user_id)
+    """
+    อ่านงานจาก assignments แล้วเทียบกับ submissions
+    """
 
-    submitted_titles = set()
+    try:
+        spreadsheet = get_sheet()
 
-    for sub in submissions:
-        submitted_titles.add(str(sub.get("homework_title", "")).strip())
+        try:
+            assignments_ws = spreadsheet.worksheet("assignments")
+        except gspread.WorksheetNotFound:
+            assignments_ws = spreadsheet.add_worksheet(
+                title="assignments",
+                rows=1000,
+                cols=10
+            )
+            assignments_ws.append_row([
+                "assignment_id",
+                "classroom",
+                "title",
+                "due_date",
+                "max_score",
+                "created_at"
+            ])
+            return []
 
-    pending = []
+        try:
+            submissions_ws = spreadsheet.worksheet("submissions")
+        except gspread.WorksheetNotFound:
+            return []
 
-    for assignment in assignments:
-        title = str(assignment.get("title", "")).strip()
+        assignments = assignments_ws.get_all_records()
+        submissions = submissions_ws.get_all_records()
 
-        if title and title not in submitted_titles:
-            pending.append(assignment)
+        submitted_titles = set()
 
-    return pending
+        for row in submissions:
+            if str(row.get("line_user_id", "")).strip() == str(line_user_id).strip():
+                submitted_titles.add(str(row.get("homework_title", "")).strip())
 
+        pending = []
+
+        for row in assignments:
+            target_classroom = str(row.get("classroom", "")).strip()
+            title = str(row.get("title", "")).strip()
+
+            if not title:
+                continue
+
+            if target_classroom not in [str(classroom), "ALL", "all", ""]:
+                continue
+
+            if title not in submitted_titles:
+                pending.append(row)
+
+        return pending
+
+    except Exception as e:
+        print("Google Sheets read error [assignments]:", e)
+        return []
+
+
+# =========================
+# ANNOUNCEMENTS
+# =========================
 
 def get_latest_announcements(limit=5):
-    announcements = get_announcements()
+    """
+    อ่านประกาศจากแท็บ announcements
+    """
 
-    # เอาประกาศล่าสุดจากแถวล่างสุดขึ้นมาก่อน
-    announcements = list(reversed(announcements))
+    try:
+        spreadsheet = get_sheet()
 
-    return announcements[:limit]
+        try:
+            ws = spreadsheet.worksheet("announcements")
+        except gspread.WorksheetNotFound:
+            ws = spreadsheet.add_worksheet(
+                title="announcements",
+                rows=1000,
+                cols=10
+            )
+            ws.append_row([
+                "created_at",
+                "title",
+                "body"
+            ])
+            return []
+
+        records = ws.get_all_records()
+
+        records = list(reversed(records))
+
+        return records[:limit]
+
+    except Exception as e:
+        print("Google Sheets read error [announcements]:", e)
+        return []
