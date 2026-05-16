@@ -1,4 +1,4 @@
-from flask import Flask, request, abort, jsonify
+from flask import Flask, request, abort
 from dotenv import load_dotenv
 import os
 import sqlite3
@@ -38,7 +38,6 @@ CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
 CHANNEL_SECRET = os.getenv("CHANNEL_SECRET")
 REGISTER_RICH_MENU_ID = os.getenv("REGISTER_RICH_MENU_ID")
 MAIN_RICH_MENU_ID = os.getenv("MAIN_RICH_MENU_ID")
-LIFF_ID = os.getenv("LIFF_ID", "")
 
 if not CHANNEL_ACCESS_TOKEN:
     print("WARNING: CHANNEL_ACCESS_TOKEN not found")
@@ -50,14 +49,6 @@ line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
 DB_NAME = "database.db"
-
-
-# =========================
-# TIME
-# =========================
-
-def now_text():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 # =========================
@@ -131,15 +122,17 @@ def init_db():
 init_db()
 
 
+def now_text():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
 def save_state(user_id, state, data=""):
     conn = get_conn()
     cur = conn.cursor()
-
     cur.execute("""
     INSERT OR REPLACE INTO states (line_user_id, state, data)
     VALUES (?, ?, ?)
     """, (user_id, state, data))
-
     conn.commit()
     conn.close()
 
@@ -147,28 +140,23 @@ def save_state(user_id, state, data=""):
 def get_state(user_id):
     conn = get_conn()
     cur = conn.cursor()
-
     cur.execute("""
     SELECT state, data
     FROM states
     WHERE line_user_id = ?
     """, (user_id,))
-
     row = cur.fetchone()
     conn.close()
-
     return row
 
 
 def clear_state(user_id):
     conn = get_conn()
     cur = conn.cursor()
-
     cur.execute("""
     DELETE FROM states
     WHERE line_user_id = ?
     """, (user_id,))
-
     conn.commit()
     conn.close()
 
@@ -176,23 +164,19 @@ def clear_state(user_id):
 def get_user(user_id):
     conn = get_conn()
     cur = conn.cursor()
-
     cur.execute("""
     SELECT line_user_id, role, full_name, student_code, classroom
     FROM users
     WHERE line_user_id = ?
     """, (user_id,))
-
     row = cur.fetchone()
     conn.close()
-
     return row
 
 
 def register_user_sqlite(user_id, full_name, student_code, classroom):
     conn = get_conn()
     cur = conn.cursor()
-
     cur.execute("""
     INSERT OR REPLACE INTO users
     (line_user_id, role, full_name, student_code, classroom, created_at)
@@ -204,7 +188,6 @@ def register_user_sqlite(user_id, full_name, student_code, classroom):
         classroom,
         now_text()
     ))
-
     conn.commit()
     conn.close()
 
@@ -212,7 +195,6 @@ def register_user_sqlite(user_id, full_name, student_code, classroom):
 def save_submission_sqlite(user_id, homework_title, message_type, message_id, file_name=""):
     conn = get_conn()
     cur = conn.cursor()
-
     cur.execute("""
     INSERT INTO submissions
     (line_user_id, homework_title, message_type, line_message_id, file_name, submitted_at)
@@ -225,7 +207,6 @@ def save_submission_sqlite(user_id, homework_title, message_type, message_id, fi
         file_name,
         now_text()
     ))
-
     conn.commit()
     conn.close()
 
@@ -233,357 +214,24 @@ def save_submission_sqlite(user_id, homework_title, message_type, message_id, fi
 def get_submission_count(user_id):
     conn = get_conn()
     cur = conn.cursor()
-
     cur.execute("""
     SELECT COUNT(*)
     FROM submissions
     WHERE line_user_id = ?
     """, (user_id,))
-
     count = cur.fetchone()[0]
     conn.close()
-
     return count
 
 
 # =========================
-# WEB PAGES
+# FLASK ROUTES
 # =========================
 
 @app.route("/")
 def home():
     return "LINE SCHOOL BOT WORKING"
 
-
-@app.route("/register")
-def register_page():
-    """
-    หน้าเว็บสำหรับกรอกข้อมูลลงทะเบียน
-    เปิดผ่าน LIFF / Rich Menu
-    """
-
-    html = f"""
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ลงทะเบียนนักเรียน</title>
-
-    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-
-    <style>
-        * {{
-            box-sizing: border-box;
-        }}
-
-        body {{
-            margin: 0;
-            padding: 0;
-            font-family: Arial, sans-serif;
-            background: #f2f5f7;
-            color: #222;
-        }}
-
-        .container {{
-            max-width: 480px;
-            margin: 0 auto;
-            padding: 24px 18px;
-        }}
-
-        .card {{
-            background: white;
-            border-radius: 18px;
-            padding: 22px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-        }}
-
-        h1 {{
-            font-size: 24px;
-            margin: 0 0 8px;
-            text-align: center;
-        }}
-
-        .subtitle {{
-            text-align: center;
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 22px;
-        }}
-
-        label {{
-            display: block;
-            font-weight: bold;
-            margin-top: 14px;
-            margin-bottom: 6px;
-        }}
-
-        input, select {{
-            width: 100%;
-            padding: 13px 12px;
-            border: 1px solid #ccc;
-            border-radius: 12px;
-            font-size: 16px;
-            background: white;
-        }}
-
-        button {{
-            width: 100%;
-            margin-top: 22px;
-            padding: 14px;
-            border: none;
-            border-radius: 14px;
-            background: #06C755;
-            color: white;
-            font-size: 17px;
-            font-weight: bold;
-            cursor: pointer;
-        }}
-
-        button:disabled {{
-            background: #aaa;
-            cursor: not-allowed;
-        }}
-
-        .note {{
-            margin-top: 14px;
-            font-size: 13px;
-            color: #777;
-            text-align: center;
-            line-height: 1.5;
-        }}
-
-        .status {{
-            margin-top: 14px;
-            padding: 12px;
-            border-radius: 12px;
-            font-size: 14px;
-            display: none;
-        }}
-
-        .success {{
-            background: #e8fff1;
-            color: #087a34;
-        }}
-
-        .error {{
-            background: #ffecec;
-            color: #b00020;
-        }}
-    </style>
-</head>
-
-<body>
-    <div class="container">
-        <div class="card">
-            <h1>ลงทะเบียนนักเรียน</h1>
-            <div class="subtitle">กรอกข้อมูลให้ครบ แล้วกดบันทึก</div>
-
-            <label>ชื่อ - นามสกุล</label>
-            <input id="full_name" type="text" placeholder="เช่น สมชาย ใจดี">
-
-            <label>เลขที่</label>
-            <input id="student_code" type="number" placeholder="เช่น 1">
-
-            <label>ห้อง</label>
-            <select id="classroom">
-                <option value="">-- เลือกห้อง --</option>
-                <option value="401">401</option>
-                <option value="402">402</option>
-                <option value="403">403</option>
-                <option value="404">404</option>
-                <option value="405">405</option>
-            </select>
-
-            <button id="submitBtn" onclick="submitRegister()">บันทึกข้อมูล</button>
-
-            <div id="statusBox" class="status"></div>
-
-            <div class="note">
-                ระบบจะบันทึกข้อมูลเข้าฐานข้อมูลและ Google Sheets อัตโนมัติ
-            </div>
-        </div>
-    </div>
-
-<script>
-    const LIFF_ID = "{LIFF_ID}";
-    let lineUserId = "";
-
-    async function main() {{
-        try {{
-            if (!LIFF_ID) {{
-                showError("ยังไม่ได้ตั้งค่า LIFF_ID ในระบบ");
-                return;
-            }}
-
-            await liff.init({{ liffId: LIFF_ID }});
-
-            if (!liff.isLoggedIn()) {{
-                liff.login();
-                return;
-            }}
-
-            const profile = await liff.getProfile();
-            lineUserId = profile.userId;
-
-        }} catch (err) {{
-            console.error(err);
-            showError("เปิดหน้าลงทะเบียนไม่สำเร็จ กรุณาลองใหม่");
-        }}
-    }}
-
-    async function submitRegister() {{
-        const fullName = document.getElementById("full_name").value.trim();
-        const studentCode = document.getElementById("student_code").value.trim();
-        const classroom = document.getElementById("classroom").value.trim();
-        const btn = document.getElementById("submitBtn");
-
-        if (!lineUserId) {{
-            showError("ไม่พบ LINE User ID กรุณาเปิดผ่าน LINE อีกครั้ง");
-            return;
-        }}
-
-        if (!fullName || !studentCode || !classroom) {{
-            showError("กรุณากรอกข้อมูลให้ครบ");
-            return;
-        }}
-
-        btn.disabled = true;
-        btn.innerText = "กำลังบันทึก...";
-
-        try {{
-            const res = await fetch("/api/register", {{
-                method: "POST",
-                headers: {{
-                    "Content-Type": "application/json"
-                }},
-                body: JSON.stringify({{
-                    line_user_id: lineUserId,
-                    full_name: fullName,
-                    student_code: studentCode,
-                    classroom: classroom
-                }})
-            }});
-
-            const data = await res.json();
-
-            if (data.ok) {{
-                showSuccess("ลงทะเบียนสำเร็จ กำลังกลับไปที่แชท...");
-
-                setTimeout(() => {{
-                    if (liff.isInClient()) {{
-                        liff.closeWindow();
-                    }}
-                }}, 1200);
-
-            }} else {{
-                showError(data.message || "บันทึกไม่สำเร็จ");
-            }}
-
-        }} catch (err) {{
-            console.error(err);
-            showError("เกิดข้อผิดพลาดในการบันทึกข้อมูล");
-        }}
-
-        btn.disabled = false;
-        btn.innerText = "บันทึกข้อมูล";
-    }}
-
-    function showSuccess(message) {{
-        const box = document.getElementById("statusBox");
-        box.className = "status success";
-        box.style.display = "block";
-        box.innerText = message;
-    }}
-
-    function showError(message) {{
-        const box = document.getElementById("statusBox");
-        box.className = "status error";
-        box.style.display = "block";
-        box.innerText = message;
-    }}
-
-    main();
-</script>
-
-</body>
-</html>
-    """
-
-    return html
-
-
-@app.route("/api/register", methods=["POST"])
-def api_register():
-    """
-    API ที่หน้าเว็บ /register ส่งข้อมูลเข้ามา
-    """
-
-    try:
-        data = request.get_json()
-
-        line_user_id = str(data.get("line_user_id", "")).strip()
-        full_name = str(data.get("full_name", "")).strip()
-        student_code = str(data.get("student_code", "")).strip()
-        classroom = str(data.get("classroom", "")).strip()
-
-        if not line_user_id or not full_name or not student_code or not classroom:
-            return jsonify({
-                "ok": False,
-                "message": "ข้อมูลไม่ครบ"
-            }), 400
-
-        register_user_sqlite(
-            line_user_id,
-            full_name,
-            student_code,
-            classroom
-        )
-
-        append_user(
-            now_text(),
-            line_user_id,
-            full_name,
-            student_code,
-            classroom,
-            "student"
-        )
-
-        clear_state(line_user_id)
-        link_main_menu(line_user_id)
-
-        try:
-            line_bot_api.push_message(
-                line_user_id,
-                TextSendMessage(
-                    text=(
-                        "ลงทะเบียนสำเร็จ\n\n"
-                        f"ชื่อ: {full_name}\n"
-                        f"เลขที่: {student_code}\n"
-                        f"ห้อง: {classroom}\n\n"
-                        "ตอนนี้สามารถใช้เมนูหลักได้แล้ว"
-                    )
-                )
-            )
-        except Exception as e:
-            print("push register success message error:", e)
-
-        return jsonify({
-            "ok": True,
-            "message": "ลงทะเบียนสำเร็จ"
-        })
-
-    except Exception as e:
-        print("api_register error:", e)
-        return jsonify({
-            "ok": False,
-            "message": "เกิดข้อผิดพลาดในระบบ"
-        }), 500
-
-
-# =========================
-# LINE WEBHOOK
-# =========================
 
 @app.route("/callback", methods=["POST"])
 def callback():
@@ -618,10 +266,13 @@ def register_guide_message():
     return TextSendMessage(
         text=(
             "ระบบลงทะเบียน\n\n"
-            "กรุณากดปุ่มลงทะเบียนที่เมนูด้านล่าง\n"
-            "แล้วกรอกข้อมูลในหน้าเว็บได้เลย\n\n"
-            "ถ้าหน้าเว็บไม่เปิด ให้พิมพ์:\n"
-            "ลิงก์ลงทะเบียน"
+            "กรุณาพิมพ์ตามรูปแบบนี้:\n\n"
+            "สมัคร ชื่อ-นามสกุล เลขที่ ห้อง\n\n"
+            "ตัวอย่าง:\n"
+            "สมัคร สมชาย ใจดี 1 401\n\n"
+            "หมายเหตุ:\n"
+            "เลขที่ = เลขที่ในห้อง\n"
+            "ห้อง = ชื่อแท็บ เช่น 401"
         )
     )
 
@@ -630,8 +281,8 @@ def need_register_message():
     return TextSendMessage(
         text=(
             "คุณยังไม่ได้ลงทะเบียน\n\n"
-            "กรุณากดเมนูลงทะเบียนด้านล่าง\n"
-            "หรือพิมพ์: ลิงก์ลงทะเบียน"
+            "กรุณากดเมนูลงทะเบียนด้านล่าง หรือพิมพ์:\n"
+            "ลงทะเบียน"
         )
     )
 
@@ -651,15 +302,6 @@ def require_registered(event):
     return True
 
 
-def get_register_link():
-    base_url = os.getenv("BASE_URL", "").strip()
-
-    if base_url:
-        return base_url.rstrip("/") + "/register"
-
-    return "/register"
-
-
 # =========================
 # LINE EVENTS
 # =========================
@@ -675,10 +317,7 @@ def handle_follow(event):
         text = "ยินดีต้อนรับกลับเข้าสู่ระบบส่งงาน\n\nกดเมนูด้านล่างเพื่อใช้งานได้เลย"
     else:
         link_register_menu(user_id)
-        text = (
-            "ยินดีต้อนรับเข้าสู่ระบบส่งงาน\n\n"
-            "กรุณากดเมนูลงทะเบียนด้านล่างเพื่อกรอกข้อมูล"
-        )
+        text = "ยินดีต้อนรับเข้าสู่ระบบส่งงาน\n\nกรุณากดเมนูด้านล่างเพื่อเริ่มลงทะเบียน"
 
     line_bot_api.reply_message(
         event.reply_token,
@@ -694,28 +333,33 @@ def handle_text(event):
     state_row = get_state(user_id)
 
     # =========================
-    # ลิงก์ลงทะเบียน
+    # เมนู
     # =========================
 
-    if user_text in ["ลิงก์ลงทะเบียน", "ลงทะเบียน", "สมัคร"]:
+    if user_text in ["เมนู", "menu", "Menu"]:
         clear_state(user_id)
-        link_register_menu(user_id)
 
-        register_url = get_register_link()
-
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(
-                text=(
-                    "กดลิงก์นี้เพื่อลงทะเบียน:\n"
-                    f"{register_url}"
-                )
-            )
-        )
+        if get_user(user_id):
+            link_main_menu(user_id)
+            line_bot_api.reply_message(event.reply_token, main_menu_text())
+        else:
+            link_register_menu(user_id)
+            line_bot_api.reply_message(event.reply_token, register_guide_message())
         return
 
     # =========================
-    # สมัครแบบพิมพ์เอง สำรองไว้
+    # ลงทะเบียน
+    # =========================
+
+    if user_text == "ลงทะเบียน":
+        clear_state(user_id)
+        link_register_menu(user_id)
+        line_bot_api.reply_message(event.reply_token, register_guide_message())
+        return
+
+    # =========================
+    # สมัคร
+    # รูปแบบ: สมัคร ชื่อ นามสกุล เลขที่ ห้อง
     # =========================
 
     if user_text.startswith("สมัคร "):
@@ -727,8 +371,7 @@ def handle_text(event):
                 TextSendMessage(
                     text=(
                         "รูปแบบไม่ถูกต้อง\n\n"
-                        "แนะนำให้กดเมนูลงทะเบียนเพื่อกรอกผ่านหน้าเว็บ\n\n"
-                        "หรือพิมพ์แบบนี้:\n"
+                        "ตัวอย่าง:\n"
                         "สมัคร สมชาย ใจดี 1 401"
                     )
                 )
@@ -761,25 +404,10 @@ def handle_text(event):
                     f"ชื่อ: {full_name}\n"
                     f"เลขที่: {student_code}\n"
                     f"ห้อง: {classroom}\n\n"
-                    "ตอนนี้สามารถใช้เมนูหลักได้แล้ว"
+                    "ตอนนี้สามารถใช้เมนูหลักด้านล่างได้แล้ว"
                 )
             )
         )
-        return
-
-    # =========================
-    # เมนู
-    # =========================
-
-    if user_text in ["เมนู", "menu", "Menu"]:
-        clear_state(user_id)
-
-        if get_user(user_id):
-            link_main_menu(user_id)
-            line_bot_api.reply_message(event.reply_token, main_menu_text())
-        else:
-            link_register_menu(user_id)
-            line_bot_api.reply_message(event.reply_token, register_guide_message())
         return
 
     # =========================
@@ -1007,12 +635,6 @@ def handle_image(event):
     message_id = event.message.id
 
     user = get_user(user_id)
-
-    if not user:
-        link_register_menu(user_id)
-        line_bot_api.reply_message(event.reply_token, need_register_message())
-        return
-
     _, role, full_name, student_code, classroom = user
 
     save_submission_sqlite(
@@ -1070,12 +692,6 @@ def handle_file(event):
     file_name = event.message.file_name
 
     user = get_user(user_id)
-
-    if not user:
-        link_register_menu(user_id)
-        line_bot_api.reply_message(event.reply_token, need_register_message())
-        return
-
     _, role, full_name, student_code, classroom = user
 
     save_submission_sqlite(

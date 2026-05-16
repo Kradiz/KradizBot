@@ -1,5 +1,8 @@
-from dotenv import load_dotenv
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+from PIL import Image
 
 from linebot import LineBotApi
 from linebot.models import (
@@ -7,174 +10,202 @@ from linebot.models import (
     RichMenuSize,
     RichMenuArea,
     RichMenuBounds,
-    MessageAction
+    URIAction,
 )
 
+
+# =========================
+# โหลด .env
+# =========================
 load_dotenv()
 
 CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
+LIFF_REGISTER_URL = os.getenv("LIFF_REGISTER_URL")
 
 if not CHANNEL_ACCESS_TOKEN:
-    raise Exception("ไม่พบ CHANNEL_ACCESS_TOKEN ในไฟล์ .env")
+    raise ValueError("ไม่พบ CHANNEL_ACCESS_TOKEN ในไฟล์ .env")
+
+if not LIFF_REGISTER_URL:
+    raise ValueError("ไม่พบ LIFF_REGISTER_URL ในไฟล์ .env")
+
 
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 
 
-REGISTER_IMAGE = "richmenu_register_resized.jpg"
-MAIN_IMAGE = "richmenu_main_resized.jpg"
+# =========================
+# ตั้งค่ารูป Rich Menu
+# =========================
+BASE_DIR = Path(__file__).resolve().parent
+
+SOURCE_IMAGE = BASE_DIR / "richmenu_register.png"
+RICHMENU_IMAGE = BASE_DIR / "richmenu_register_2500x1686.jpg"
+
+RICHMENU_WIDTH = 2500
+RICHMENU_HEIGHT = 1686
 
 
-def check_file(file_path):
-    if not os.path.exists(file_path):
-        raise Exception(f"ไม่พบไฟล์ {file_path}")
+def prepare_richmenu_image():
+    """
+    เตรียมรูป Rich Menu ให้เป็น 2500x1686 jpg
+    ถ้ามีไฟล์ richmenu_register_2500x1686.jpg อยู่แล้ว จะใช้เลย
+    ถ้าไม่มี จะเอา richmenu_register.png มา resize/crop ให้
+    """
 
-    size_mb = os.path.getsize(file_path) / (1024 * 1024)
-    print(f"{file_path} size = {size_mb:.2f} MB")
+    if RICHMENU_IMAGE.exists():
+        print(f"พบรูปพร้อมใช้แล้ว: {RICHMENU_IMAGE.name}")
+        return
 
-    if size_mb > 1:
-        raise Exception(f"{file_path} ใหญ่เกิน 1 MB กรุณารัน resize_richmenus.py ใหม่")
+    if not SOURCE_IMAGE.exists():
+        raise FileNotFoundError(
+            "ไม่พบไฟล์รูป Rich Menu\n"
+            f"ต้องมีไฟล์อย่างน้อย 1 ไฟล์:\n"
+            f"- {RICHMENU_IMAGE.name}\n"
+            f"หรือ\n"
+            f"- {SOURCE_IMAGE.name}"
+        )
+
+    print("กำลังปรับขนาดรูปเป็น 2500x1686...")
+
+    img = Image.open(SOURCE_IMAGE).convert("RGB")
+
+    src_w, src_h = img.size
+    target_ratio = RICHMENU_WIDTH / RICHMENU_HEIGHT
+    src_ratio = src_w / src_h
+
+    if src_ratio > target_ratio:
+        # รูปกว้างเกิน ตัดซ้ายขวา
+        new_w = int(src_h * target_ratio)
+        left = (src_w - new_w) // 2
+        img = img.crop((left, 0, left + new_w, src_h))
+    else:
+        # รูปสูงเกิน ตัดบนล่าง
+        new_h = int(src_w / target_ratio)
+        top = (src_h - new_h) // 2
+        img = img.crop((0, top, src_w, top + new_h))
+
+    img = img.resize((RICHMENU_WIDTH, RICHMENU_HEIGHT), Image.LANCZOS)
+
+    # LINE แนะนำให้รูปไม่เกิน 1 MB
+    quality = 90
+    while quality >= 60:
+        img.save(RICHMENU_IMAGE, "JPEG", quality=quality, optimize=True)
+        size_mb = RICHMENU_IMAGE.stat().st_size / (1024 * 1024)
+
+        print(f"บันทึกรูป quality={quality}, ขนาด={size_mb:.2f} MB")
+
+        if size_mb <= 1.0:
+            break
+
+        quality -= 5
+
+    print(f"สร้างรูปสำเร็จ: {RICHMENU_IMAGE.name}")
 
 
 def create_register_menu():
-    print("\nกำลังสร้าง Rich Menu: ลงทะเบียน")
+    """
+    สร้าง Rich Menu ปุ่มเดียว กดแล้วเปิด LIFF ลงทะเบียน
+    """
+
+    print("กำลังสร้าง Rich Menu...")
+    print(f"LIFF_REGISTER_URL = {LIFF_REGISTER_URL}")
 
     rich_menu = RichMenu(
-        size=RichMenuSize(width=2500, height=1686),
+        size=RichMenuSize(width=RICHMENU_WIDTH, height=RICHMENU_HEIGHT),
         selected=True,
-        name="register-menu",
-        chat_bar_text="ลงทะเบียน",
+        name="register_menu",
+        chat_bar_text="เมนู",
         areas=[
-            # ทั้งภาพเป็นปุ่มเดียว
             RichMenuArea(
                 bounds=RichMenuBounds(
                     x=0,
                     y=0,
-                    width=2500,
-                    height=1686
+                    width=RICHMENU_WIDTH,
+                    height=RICHMENU_HEIGHT,
                 ),
-                action=MessageAction(
+                action=URIAction(
                     label="ลงทะเบียน",
-                    text="ลงทะเบียน"
-                )
+                    uri=LIFF_REGISTER_URL,
+                ),
             )
-        ]
+        ],
     )
 
     rich_menu_id = line_bot_api.create_rich_menu(rich_menu=rich_menu)
-    print("สร้างเมนูลงทะเบียนแล้ว:", rich_menu_id)
+    print(f"สร้าง Rich Menu ID สำเร็จ: {rich_menu_id}")
 
-    check_file(REGISTER_IMAGE)
-
-    with open(REGISTER_IMAGE, "rb") as f:
+    print("กำลังอัปโหลดรูป Rich Menu...")
+    with open(RICHMENU_IMAGE, "rb") as f:
         line_bot_api.set_rich_menu_image(
             rich_menu_id,
             "image/jpeg",
             f
         )
 
-    print("อัปโหลดรูปเมนูลงทะเบียนสำเร็จ")
+    print("อัปโหลดรูปสำเร็จ")
+
+    print("กำลังตั้งเป็น Default Rich Menu...")
+    line_bot_api.set_default_rich_menu(rich_menu_id)
+
+    print("ตั้ง Default Rich Menu สำเร็จ")
+
     return rich_menu_id
 
 
-def create_main_menu():
-    print("\nกำลังสร้าง Rich Menu: เมนูหลัก")
+def list_rich_menus():
+    """
+    แสดงรายการ Rich Menu ทั้งหมดในบัญชี
+    """
+    rich_menus = line_bot_api.get_rich_menu_list()
 
-    rich_menu = RichMenu(
-        size=RichMenuSize(width=2500, height=1686),
-        selected=True,
-        name="main-menu",
-        chat_bar_text="เมนูระบบส่งงาน",
-        areas=[
-            # ซ้ายบน: ส่งงาน
-            RichMenuArea(
-                bounds=RichMenuBounds(
-                    x=0,
-                    y=0,
-                    width=1250,
-                    height=843
-                ),
-                action=MessageAction(
-                    label="ส่งงาน",
-                    text="ส่งงาน"
-                )
-            ),
+    print("\nรายการ Rich Menu ทั้งหมด:")
+    if not rich_menus:
+        print("- ไม่มี Rich Menu")
+        return
 
-            # ขวาบน: ถามครูนัท
-            RichMenuArea(
-                bounds=RichMenuBounds(
-                    x=1250,
-                    y=0,
-                    width=1250,
-                    height=843
-                ),
-                action=MessageAction(
-                    label="ถามครูนัท",
-                    text="ถามครูนัท"
-                )
-            ),
-
-            # ซ้ายล่าง: งานค้าง
-            RichMenuArea(
-                bounds=RichMenuBounds(
-                    x=0,
-                    y=843,
-                    width=1250,
-                    height=843
-                ),
-                action=MessageAction(
-                    label="งานค้าง",
-                    text="งานค้าง"
-                )
-            ),
-
-            # ขวาล่าง: ประกาศจากครู
-            RichMenuArea(
-                bounds=RichMenuBounds(
-                    x=1250,
-                    y=843,
-                    width=1250,
-                    height=843
-                ),
-                action=MessageAction(
-                    label="ประกาศจากครู",
-                    text="ประกาศจากครู"
-                )
-            ),
-        ]
-    )
-
-    rich_menu_id = line_bot_api.create_rich_menu(rich_menu=rich_menu)
-    print("สร้างเมนูหลักแล้ว:", rich_menu_id)
-
-    check_file(MAIN_IMAGE)
-
-    with open(MAIN_IMAGE, "rb") as f:
-        line_bot_api.set_rich_menu_image(
-            rich_menu_id,
-            "image/jpeg",
-            f
-        )
-
-    print("อัปโหลดรูปเมนูหลักสำเร็จ")
-    return rich_menu_id
+    for menu in rich_menus:
+        print(f"- {menu.rich_menu_id} | {menu.name} | {menu.chat_bar_text}")
 
 
-def main():
-    print("เริ่มสร้าง Rich Menu 2 ชุด")
+def delete_all_rich_menus():
+    """
+    ถ้าต้องการลบ Rich Menu เก่าทั้งหมด ให้เปิดใช้ฟังก์ชันนี้ใน main
+    """
+    rich_menus = line_bot_api.get_rich_menu_list()
 
-    register_id = create_register_menu()
-    main_id = create_main_menu()
+    if not rich_menus:
+        print("ไม่มี Rich Menu เก่าให้ลบ")
+        return
 
-    # ตั้ง default ให้คนใหม่เห็นเมนูลงทะเบียนก่อน
-    line_bot_api.set_default_rich_menu(register_id)
+    print("กำลังลบ Rich Menu เก่าทั้งหมด...")
 
-    print("\n==============================")
-    print("สร้าง Rich Menu สำเร็จ")
-    print("==============================")
-    print("REGISTER_RICH_MENU_ID=" + register_id)
-    print("MAIN_RICH_MENU_ID=" + main_id)
-    print("\nให้เอา 2 ค่านี้ไปใส่ใน .env และ Render Environment")
+    for menu in rich_menus:
+        try:
+            print(f"ลบ: {menu.rich_menu_id} | {menu.name}")
+            line_bot_api.delete_rich_menu(menu.rich_menu_id)
+        except Exception as e:
+            print(f"ลบไม่สำเร็จ: {menu.rich_menu_id} -> {e}")
+
+    print("ลบ Rich Menu เก่าเสร็จแล้ว")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        prepare_richmenu_image()
+
+        # ถ้าอยากลบเมนูเก่าทั้งหมดก่อนสร้างใหม่
+        # ให้เอา # หน้าบรรทัดนี้ออก
+        # delete_all_rich_menus()
+
+        register_id = create_register_menu()
+
+        print("\n==============================")
+        print("สร้าง Rich Menu เสร็จแล้ว")
+        print(f"REGISTER_RICH_MENU_ID={register_id}")
+        print("==============================\n")
+
+        list_rich_menus()
+
+    except Exception as e:
+        print("\nเกิดข้อผิดพลาด:")
+        print(e)
+        raise
