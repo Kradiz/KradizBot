@@ -49,8 +49,13 @@ def today_date():
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
 
-GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "")
-GOOGLE_DRIVE_ROOT_FOLDER_ID = os.getenv("GOOGLE_DRIVE_ROOT_FOLDER_ID", "")
+GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "").strip()
+
+# รองรับทั้งชื่อใหม่/ชื่อเก่า กันใส่ ENV ผิดชื่อ
+GOOGLE_DRIVE_ROOT_FOLDER_ID = (
+    os.getenv("GOOGLE_DRIVE_ROOT_FOLDER_ID", "").strip()
+    or os.getenv("GOOGLE_DRIVE_FOLDER_ID", "").strip()
+)
 
 CRON_SECRET = os.getenv("CRON_SECRET", "")
 TEACHER_SETUP_CODE = os.getenv("TEACHER_SETUP_CODE", "")
@@ -94,11 +99,15 @@ SCOPES = [
 
 def get_google_credentials():
     """
-    รองรับ 2 แบบ:
-    1. GOOGLE_SERVICE_ACCOUNT_JSON เป็น JSON string ใน Render
-    2. credentials.json อยู่ในโปรเจกต์
+    รองรับหลายชื่อ ENV กันตั้งชื่อไม่ตรง:
+    1. GOOGLE_SERVICE_ACCOUNT_JSON
+    2. GOOGLE_CREDENTIALS_JSON
+    3. credentials.json ในโปรเจกต์
     """
-    service_account_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+    service_account_json = (
+        os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+        or os.getenv("GOOGLE_CREDENTIALS_JSON", "").strip()
+    )
 
     if service_account_json:
         info = json.loads(service_account_json)
@@ -913,8 +922,14 @@ def debug_env():
     return jsonify({
         "LINE_CHANNEL_ACCESS_TOKEN": bool(LINE_CHANNEL_ACCESS_TOKEN),
         "LINE_CHANNEL_SECRET": bool(LINE_CHANNEL_SECRET),
+
         "GOOGLE_SHEET_ID": bool(GOOGLE_SHEET_ID),
         "GOOGLE_DRIVE_ROOT_FOLDER_ID": bool(GOOGLE_DRIVE_ROOT_FOLDER_ID),
+        "GOOGLE_DRIVE_FOLDER_ID": bool(os.getenv("GOOGLE_DRIVE_FOLDER_ID", "").strip()),
+        "GOOGLE_SERVICE_ACCOUNT_JSON": bool(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()),
+        "GOOGLE_CREDENTIALS_JSON": bool(os.getenv("GOOGLE_CREDENTIALS_JSON", "").strip()),
+        "credentials_json_file_exists": os.path.exists("credentials.json"),
+
         "CRON_SECRET": bool(CRON_SECRET),
         "TEACHER_SETUP_CODE": bool(TEACHER_SETUP_CODE),
 
@@ -941,6 +956,28 @@ def debug_env():
         "TEACHER_RICH_MENU_QUESTION_ALERT_ID": bool(TEACHER_RICH_MENU_QUESTION_ALERT_ID),
     })
 
+
+@app.route("/debug/line-profile/<user_id>")
+def debug_line_profile(user_id):
+    url = f"https://api.line.me/v2/bot/profile/{user_id}"
+
+    headers = {
+        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
+    }
+
+    try:
+        r = requests.get(url, headers=headers, timeout=15)
+        return jsonify({
+            "success": r.status_code == 200,
+            "status_code": r.status_code,
+            "response": r.json() if r.text else {},
+            "raw": r.text,
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": str(e),
+        })
 
 @app.route("/debug/setup-sheets")
 def debug_setup_sheets():
@@ -2137,10 +2174,11 @@ def webhook():
                 teacher = get_teacher_by_line_user_id(user_id)
                 student = get_student_by_line_user_id(user_id)
 
-                if text in ["เมนู", "menu"]:
+                if text in ["เมนู", "menu", "รีเซ็ตเมนู", "reset menu"]:
                     if teacher:
+                        unlink_rich_menu_from_user(user_id)
                         update_teacher_rich_menu(user_id)
-                        reply_message(reply_token, "อัปเดตเมนูครูเรียบร้อยแล้ว")
+                        reply_message(reply_token, "รีเซ็ตและอัปเดตเมนูครูเรียบร้อยแล้ว")
                     elif student:
                         unlink_rich_menu_from_user(user_id)
                         reply_message(
