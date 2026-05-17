@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>คำถามนักเรียน</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+    <style>
+        * { box-sizing: border-box; font-family: Arial, sans-serif; }
+        body { margin: 0; padding: 16px; background: #f5f7fb; color: #222; }
+        .container { max-width: 520px; margin: 0 auto; background: white; border-radius: 18px; padding: 20px; box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
+        h1 { font-size: 22px; margin: 0 0 16px; text-align: center; }
+        .question { padding: 14px; border: 1px solid #ddd; border-radius: 14px; margin-bottom: 14px; background: #fafafa; }
+        .meta { font-size: 13px; color: #666; margin-bottom: 8px; line-height: 1.5; }
+        .text { font-size: 15px; margin-bottom: 10px; line-height: 1.5; }
+        textarea { width: 100%; min-height: 80px; padding: 10px; border: 1px solid #d0d7de; border-radius: 12px; font-size: 15px; }
+        button { width: 100%; margin-top: 10px; padding: 12px; background: #06c755; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; }
+        .empty { padding: 14px; background: #e8f8ee; color: #087a34; border-radius: 12px; }
+        .error { padding: 14px; background: #fff0f0; color: #b00020; border-radius: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>คำถามที่ยังไม่ได้ตอบ</h1>
+        <div id="questionBox">กำลังโหลด...</div>
+    </div>
+
+    <script>
+        const LIFF_ID = "{{ liff_id }}";
+        let lineUserId = "";
+
+        async function main() {
+            try {
+                await liff.init({ liffId: LIFF_ID });
+
+                if (!liff.isLoggedIn()) {
+                    liff.login();
+                    return;
+                }
+
+                const profile = await liff.getProfile();
+                lineUserId = profile.userId;
+
+                await loadQuestions();
+
+            } catch (error) {
+                showError("เปิด LIFF ไม่สำเร็จ: " + error.message);
+            }
+        }
+
+        async function loadQuestions() {
+            const res = await fetch("/api/teacher/questions?teacher_line_user_id=" + encodeURIComponent(lineUserId));
+            const result = await res.json();
+
+            const box = document.getElementById("questionBox");
+            box.innerHTML = "";
+
+            if (!result.success) {
+                showError(result.message || "โหลดข้อมูลไม่สำเร็จ");
+                return;
+            }
+
+            if (result.questions.length === 0) {
+                box.innerHTML = '<div class="empty">ยังไม่มีคำถามค้าง</div>';
+                return;
+            }
+
+            result.questions.forEach(q => {
+                const div = document.createElement("div");
+                div.className = "question";
+                div.innerHTML = `
+                    <div class="meta">
+                        ห้อง: ${q.classroom}<br>
+                        นักเรียน: ${q.student_name}<br>
+                        เวลา: ${q.created_at}
+                    </div>
+                    <div class="text">คำถาม: ${q.question_text}</div>
+                    <textarea id="answer_${q.question_id}" placeholder="พิมพ์คำตอบ"></textarea>
+                    <button onclick="answerQuestion('${q.question_id}')">ส่งคำตอบ</button>
+                `;
+                box.appendChild(div);
+            });
+        }
+
+        async function answerQuestion(questionId) {
+            const answerText = document.getElementById("answer_" + questionId).value.trim();
+
+            if (!answerText) {
+                alert("กรุณากรอกคำตอบ");
+                return;
+            }
+
+            const res = await fetch("/api/teacher/questions/answer", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    question_id: questionId,
+                    answer_text: answerText,
+                    teacher_line_user_id: lineUserId
+                })
+            });
+
+            const result = await res.json();
+
+            if (!res.ok || !result.success) {
+                alert(result.message || "ตอบคำถามไม่สำเร็จ");
+                return;
+            }
+
+            alert("ตอบคำถามเรียบร้อยแล้ว");
+            await loadQuestions();
+        }
+
+        function showError(msg) {
+            document.getElementById("questionBox").innerHTML = '<div class="error">' + msg + '</div>';
+        }
+
+        main();
+    </script>
+</body>
+</html>

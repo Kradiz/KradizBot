@@ -1,588 +1,883 @@
-from flask import Flask, request, abort, jsonify
-from dotenv import load_dotenv
 import os
-import sqlite3
+import uuid
 from datetime import datetime
+
+from flask import Flask, request, abort, render_template, jsonify
+from dotenv import load_dotenv
+
+import gspread
+from gspread.exceptions import WorksheetNotFound
+from google.oauth2.service_account import Credentials
 
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import (
-    MessageEvent,
-    TextMessage,
-    TextSendMessage,
-    ImageMessage,
-    FileMessage,
-    FollowEvent,
-    QuickReply,
-    QuickReplyButton,
-    MessageAction
-)
-
-from google_sheets import (
-    append_user,
-    append_submission,
-    get_pending_assignments,
-    get_latest_announcements
-)
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
 
 
 # =========================
-# CONFIG
+# Load ENV
 # =========================
 
 load_dotenv()
 
-app = Flask(__name__)
-
 CHANNEL_ACCESS_TOKEN = os.getenv("CHANNEL_ACCESS_TOKEN")
 CHANNEL_SECRET = os.getenv("CHANNEL_SECRET")
-REGISTER_RICH_MENU_ID = os.getenv("REGISTER_RICH_MENU_ID")
-MAIN_RICH_MENU_ID = os.getenv("MAIN_RICH_MENU_ID")
-LIFF_ID = os.getenv("LIFF_ID", "")
+GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
+
+LIFF_TEACHER_SETUP_ID = os.getenv("LIFF_TEACHER_SETUP_ID")
+LIFF_TEACHER_ASSIGNMENT_ID = os.getenv("LIFF_TEACHER_ASSIGNMENT_ID")
+LIFF_TEACHER_PENDING_ID = os.getenv("LIFF_TEACHER_PENDING_ID")
+LIFF_TEACHER_QUESTIONS_ID = os.getenv("LIFF_TEACHER_QUESTIONS_ID")
+LIFF_TEACHER_ANNOUNCE_ID = os.getenv("LIFF_TEACHER_ANNOUNCE_ID")
 
 if not CHANNEL_ACCESS_TOKEN:
-    print("WARNING: CHANNEL_ACCESS_TOKEN not found")
+    raise ValueError("ไม่พบ CHANNEL_ACCESS_TOKEN")
 
 if not CHANNEL_SECRET:
-    print("WARNING: CHANNEL_SECRET not found")
+    raise ValueError("ไม่พบ CHANNEL_SECRET")
+
+if not GOOGLE_SHEET_ID:
+    raise ValueError("ไม่พบ GOOGLE_SHEET_ID")
+
+
+# =========================
+# Flask / LINE
+# =========================
+
+app = Flask(__name__)
 
 line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
-DB_NAME = "database.db"
+
+# =========================
+# Google Sheets
+# =========================
+
+def get_spreadsheet():
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    creds = Credentials.from_service_account_file(
+        "credentials.json",
+        scopes=scopes
+    )
+
+    client = gspread.authorize(creds)
+    return client.open_by_key(GOOGLE_SHEET_ID)
+
+
+def get_or_create_sheet(spreadsheet, title, headers, rows=200, cols=30):
+    try:
+        ws = spreadsheet.worksheet(title)
+    except WorksheetNotFound:
+        ws = spreadsheet.add_worksheet(title=title, rows=rows, cols=cols)
+        ws.append_row(headers)
+    return ws
+
+
+def ensure_main_sheets(spreadsheet):
+    get_or_create_sheet(
+        spreadsheet,
+        "teachers",
+        [
+            "teacher_line_user_id",
+            "teacher_name",
+            "rooms",
+            "created_at",
+            "updated_at"
+        ]
+    )
+
+    get_or_create_sheet(
+        spreadsheet,
+        "users",
+        [
+            "line_user_id",
+            "role",
+            "full_name",
+            "student_code",
+            "classroom",
+            "created_at"
+        ]
+    )
+
+    get_or_create_sheet(
+        spreadsheet,
+        "assignments",
+        [
+            "assignment_id",
+            "classroom",
+            "title",
+            "description",
+            "start_date",
+            "due_date",
+            "max_score",
+            "teacher_line_user_id",
+            "created_at"
+        ]
+    )
+
+    get_or_create_sheet(
+        spreadsheet,
+        "submissions",
+        [
+            "submission_id",
+            "assignment_id",
+            "student_line_user_id",
+            "student_name",
+            "classroom",
+            "submitted_at",
+            "status",
+            "score",
+            "note"
+        ]
+    )
+
+    get_or_create_sheet(
+        spreadsheet,
+        "questions",
+        [
+            "question_id",
+            "created_at",
+            "student_line_user_id",
+            "student_name",
+            "classroom",
+            "question_text",
+            "status",
+            "answer_text",
+            "answered_at",
+            "teacher_line_user_id"
+        ]
+    )
+
+    get_or_create_sheet(
+        spreadsheet,
+        "announcements",
+        [
+            "announcement_id",
+            "created_at",
+            "teacher_line_user_id",
+            "teacher_name",
+            "classroom",
+            "message"
+        ]
+    )
 
 
 # =========================
-# TIME
+# Helpers
 # =========================
 
 def now_text():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def reply_text(reply_token, text):
+    line_bot_api.reply_message(
+        reply_token,
+        TextSendMessage(text=text)
+    )
+
+
+def parse_rooms(text):
+    if not text:
+        return []
+
+    text = text.replace("，", ",")
+    text = text.replace("、", ",")
+    text = text.replace("\n", ",")
+    text = text.replace(" ", ",")
+
+    rooms = []
+    for item in text.split(","):
+        room = item.strip()
+        if room and room not in rooms:
+            rooms.append(room)
+
+    return rooms
+
+
+def safe_sheet_name(room):
+    room = str(room).strip()
+    room = room.replace("/", "-")
+    room = room.replace("\\", "-")
+    room = room.replace("?", "")
+    room = room.replace("*", "")
+    room = room.replace("[", "")
+    room = room.replace("]", "")
+    room = room.replace(":", "-")
+    return f"ห้อง_{room}"
+
+
+def get_teacher_rooms(spreadsheet, teacher_line_user_id):
+    ws = get_or_create_sheet(
+        spreadsheet,
+        "teachers",
+        [
+            "teacher_line_user_id",
+            "teacher_name",
+            "rooms",
+            "created_at",
+            "updated_at"
+        ]
+    )
+
+    records = ws.get_all_records()
+
+    for row in records:
+        if str(row.get("teacher_line_user_id")) == str(teacher_line_user_id):
+            rooms_text = str(row.get("rooms", "")).strip()
+            return parse_rooms(rooms_text)
+
+    return []
+
+
+def get_teacher_name(spreadsheet, teacher_line_user_id):
+    ws = spreadsheet.worksheet("teachers")
+    records = ws.get_all_records()
+
+    for row in records:
+        if str(row.get("teacher_line_user_id")) == str(teacher_line_user_id):
+            return row.get("teacher_name", "")
+
+    return ""
+
+
 # =========================
-# RICH MENU
+# Classroom Sheet
 # =========================
 
-def link_register_menu(user_id):
+def create_classroom_sheet_if_not_exists(spreadsheet, room):
+    sheet_name = safe_sheet_name(room)
+
     try:
-        if REGISTER_RICH_MENU_ID:
-            line_bot_api.link_rich_menu_to_user(user_id, REGISTER_RICH_MENU_ID)
-    except Exception as e:
-        print("link_register_menu error:", e)
+        spreadsheet.worksheet(sheet_name)
+        return sheet_name
+    except WorksheetNotFound:
+        pass
+
+    ws = spreadsheet.add_worksheet(title=sheet_name, rows=120, cols=40)
+
+    ws.update("A1:J1", [[f"สรุปงานห้อง {room}"]])
+    ws.merge_cells("A1:J1")
+
+    ws.update("A3:C3", [[
+        "ชื่อ",
+        "เลขที่",
+        "ID Line"
+    ]])
+
+    fill_students_to_classroom_sheet(spreadsheet, room, ws)
+    format_classroom_sheet(spreadsheet, ws)
+
+    return sheet_name
 
 
-def link_main_menu(user_id):
-    try:
-        if MAIN_RICH_MENU_ID:
-            line_bot_api.link_rich_menu_to_user(user_id, MAIN_RICH_MENU_ID)
-    except Exception as e:
-        print("link_main_menu error:", e)
+def fill_students_to_classroom_sheet(spreadsheet, room, classroom_ws):
+    users_ws = get_or_create_sheet(
+        spreadsheet,
+        "users",
+        [
+            "line_user_id",
+            "role",
+            "full_name",
+            "student_code",
+            "classroom",
+            "created_at"
+        ]
+    )
+
+    records = users_ws.get_all_records()
+    values = []
+
+    for row in records:
+        classroom = str(row.get("classroom", "")).strip()
+
+        if classroom == str(room).strip():
+            values.append([
+                row.get("full_name", ""),
+                row.get("student_code", ""),
+                row.get("line_user_id", "")
+            ])
+
+    if values:
+        classroom_ws.update(f"A4:C{3 + len(values)}", values)
+
+
+def format_classroom_sheet(spreadsheet, ws):
+    sheet_id = ws.id
+
+    requests = [
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 0,
+                    "endRowIndex": 1,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": 10
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "horizontalAlignment": "CENTER",
+                        "verticalAlignment": "MIDDLE",
+                        "backgroundColor": {
+                            "red": 0.89,
+                            "green": 0.95,
+                            "blue": 0.85
+                        },
+                        "textFormat": {
+                            "bold": True,
+                            "fontSize": 16
+                        }
+                    }
+                },
+                "fields": "userEnteredFormat"
+            }
+        },
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 2,
+                    "endRowIndex": 3,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": 40
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "horizontalAlignment": "CENTER",
+                        "verticalAlignment": "MIDDLE",
+                        "textFormat": {
+                            "bold": True
+                        }
+                    }
+                },
+                "fields": "userEnteredFormat"
+            }
+        },
+        {
+            "updateBorders": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 0,
+                    "endRowIndex": 60,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": 20
+                },
+                "top": {"style": "SOLID", "width": 1},
+                "bottom": {"style": "SOLID", "width": 1},
+                "left": {"style": "SOLID", "width": 1},
+                "right": {"style": "SOLID", "width": 1},
+                "innerHorizontal": {"style": "SOLID", "width": 1},
+                "innerVertical": {"style": "SOLID", "width": 1}
+            }
+        },
+        {
+            "updateSheetProperties": {
+                "properties": {
+                    "sheetId": sheet_id,
+                    "gridProperties": {
+                        "frozenRowCount": 3,
+                        "frozenColumnCount": 3
+                    }
+                },
+                "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount"
+            }
+        }
+    ]
+
+    spreadsheet.batch_update({"requests": requests})
+
+
+def add_assignment_header_to_classroom_sheet(spreadsheet, room, assignment_title):
+    sheet_name = create_classroom_sheet_if_not_exists(spreadsheet, room)
+    ws = spreadsheet.worksheet(sheet_name)
+
+    row2 = ws.row_values(2)
+
+    start_col = 4
+    while True:
+        value = ""
+        if len(row2) >= start_col:
+            value = row2[start_col - 1]
+
+        if not value:
+            break
+
+        start_col += 3
+
+    end_col = start_col + 2
+
+    ws.update_cell(2, start_col, assignment_title)
+    ws.merge_cells(
+        start_row=2,
+        start_col=start_col,
+        end_row=2,
+        end_col=end_col
+    )
+
+    ws.update(
+        f"{gspread.utils.rowcol_to_a1(3, start_col)}:{gspread.utils.rowcol_to_a1(3, end_col)}",
+        [["ครบเวลา", "เลยกำหนด", "คะแนน"]]
+    )
+
+    return sheet_name
 
 
 # =========================
-# DATABASE
+# Teacher Setup
 # =========================
 
-def get_conn():
-    return sqlite3.connect(DB_NAME)
+def save_teacher_rooms(spreadsheet, teacher_line_user_id, teacher_name, rooms):
+    ws = spreadsheet.worksheet("teachers")
+    records = ws.get_all_records()
 
+    now = now_text()
+    rooms_text = ",".join(rooms)
 
-def init_db():
-    conn = get_conn()
-    cur = conn.cursor()
+    found_row = None
+    old_created_at = now
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        line_user_id TEXT UNIQUE,
-        role TEXT DEFAULT 'student',
-        full_name TEXT,
-        student_code TEXT,
-        classroom TEXT,
-        created_at TEXT
-    )
-    """)
+    for i, row in enumerate(records, start=2):
+        if str(row.get("teacher_line_user_id")) == str(teacher_line_user_id):
+            found_row = i
+            old_created_at = row.get("created_at") or now
+            break
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS submissions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        line_user_id TEXT,
-        homework_title TEXT,
-        message_type TEXT,
-        line_message_id TEXT,
-        file_name TEXT,
-        submitted_at TEXT
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS states (
-        line_user_id TEXT PRIMARY KEY,
-        state TEXT,
-        data TEXT
-    )
-    """)
-
-    conn.commit()
-    conn.close()
-
-
-init_db()
-
-
-def save_state(user_id, state, data=""):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-    INSERT OR REPLACE INTO states (line_user_id, state, data)
-    VALUES (?, ?, ?)
-    """, (user_id, state, data))
-
-    conn.commit()
-    conn.close()
-
-
-def get_state(user_id):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT state, data
-    FROM states
-    WHERE line_user_id = ?
-    """, (user_id,))
-
-    row = cur.fetchone()
-    conn.close()
-
-    return row
-
-
-def clear_state(user_id):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-    DELETE FROM states
-    WHERE line_user_id = ?
-    """, (user_id,))
-
-    conn.commit()
-    conn.close()
-
-
-def get_user(user_id):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT line_user_id, role, full_name, student_code, classroom
-    FROM users
-    WHERE line_user_id = ?
-    """, (user_id,))
-
-    row = cur.fetchone()
-    conn.close()
-
-    return row
-
-
-def register_user_sqlite(user_id, full_name, student_code, classroom):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-    INSERT OR REPLACE INTO users
-    (line_user_id, role, full_name, student_code, classroom, created_at)
-    VALUES (?, 'student', ?, ?, ?, ?)
-    """, (
-        user_id,
-        full_name,
-        student_code,
-        classroom,
-        now_text()
-    ))
-
-    conn.commit()
-    conn.close()
-
-
-def save_submission_sqlite(user_id, homework_title, message_type, message_id, file_name=""):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-    INSERT INTO submissions
-    (line_user_id, homework_title, message_type, line_message_id, file_name, submitted_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-    """, (
-        user_id,
-        homework_title,
-        message_type,
-        message_id,
-        file_name,
-        now_text()
-    ))
-
-    conn.commit()
-    conn.close()
-
-
-def get_submission_count(user_id):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT COUNT(*)
-    FROM submissions
-    WHERE line_user_id = ?
-    """, (user_id,))
-
-    count = cur.fetchone()[0]
-    conn.close()
-
-    return count
+    if found_row:
+        ws.update(
+            f"A{found_row}:E{found_row}",
+            [[
+                teacher_line_user_id,
+                teacher_name,
+                rooms_text,
+                old_created_at,
+                now
+            ]]
+        )
+    else:
+        ws.append_row([
+            teacher_line_user_id,
+            teacher_name,
+            rooms_text,
+            now,
+            now
+        ])
 
 
 # =========================
-# WEB PAGES
+# Web Pages
 # =========================
 
 @app.route("/")
 def home():
-    return "LINE SCHOOL BOT WORKING"
+    return "LINE School Bot is running"
 
 
-@app.route("/register")
-def register_page():
-    """
-    หน้าเว็บสำหรับกรอกข้อมูลลงทะเบียน
-    เปิดผ่าน LIFF / Rich Menu
-    """
-
-    html = f"""
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ลงทะเบียนนักเรียน</title>
-
-    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-
-    <style>
-        * {{
-            box-sizing: border-box;
-        }}
-
-        body {{
-            margin: 0;
-            padding: 0;
-            font-family: Arial, sans-serif;
-            background: #f2f5f7;
-            color: #222;
-        }}
-
-        .container {{
-            max-width: 480px;
-            margin: 0 auto;
-            padding: 24px 18px;
-        }}
-
-        .card {{
-            background: white;
-            border-radius: 18px;
-            padding: 22px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-        }}
-
-        h1 {{
-            font-size: 24px;
-            margin: 0 0 8px;
-            text-align: center;
-        }}
-
-        .subtitle {{
-            text-align: center;
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 22px;
-        }}
-
-        label {{
-            display: block;
-            font-weight: bold;
-            margin-top: 14px;
-            margin-bottom: 6px;
-        }}
-
-        input, select {{
-            width: 100%;
-            padding: 13px 12px;
-            border: 1px solid #ccc;
-            border-radius: 12px;
-            font-size: 16px;
-            background: white;
-        }}
-
-        button {{
-            width: 100%;
-            margin-top: 22px;
-            padding: 14px;
-            border: none;
-            border-radius: 14px;
-            background: #06C755;
-            color: white;
-            font-size: 17px;
-            font-weight: bold;
-            cursor: pointer;
-        }}
-
-        button:disabled {{
-            background: #aaa;
-            cursor: not-allowed;
-        }}
-
-        .note {{
-            margin-top: 14px;
-            font-size: 13px;
-            color: #777;
-            text-align: center;
-            line-height: 1.5;
-        }}
-
-        .status {{
-            margin-top: 14px;
-            padding: 12px;
-            border-radius: 12px;
-            font-size: 14px;
-            display: none;
-        }}
-
-        .success {{
-            background: #e8fff1;
-            color: #087a34;
-        }}
-
-        .error {{
-            background: #ffecec;
-            color: #b00020;
-        }}
-    </style>
-</head>
-
-<body>
-    <div class="container">
-        <div class="card">
-            <h1>ลงทะเบียนนักเรียน</h1>
-            <div class="subtitle">กรอกข้อมูลให้ครบ แล้วกดบันทึก</div>
-
-            <label>ชื่อ - นามสกุล</label>
-            <input id="full_name" type="text" placeholder="เช่น สมชาย ใจดี">
-
-            <label>เลขที่</label>
-            <input id="student_code" type="number" placeholder="เช่น 1">
-
-            <label>ห้อง</label>
-            <select id="classroom">
-                <option value="">-- เลือกห้อง --</option>
-                <option value="401">401</option>
-                <option value="402">402</option>
-                <option value="403">403</option>
-                <option value="404">404</option>
-                <option value="405">405</option>
-            </select>
-
-            <button id="submitBtn" onclick="submitRegister()">บันทึกข้อมูล</button>
-
-            <div id="statusBox" class="status"></div>
-
-            <div class="note">
-                ระบบจะบันทึกข้อมูลเข้าฐานข้อมูลและ Google Sheets อัตโนมัติ
-            </div>
-        </div>
-    </div>
-
-<script>
-    const LIFF_ID = "{LIFF_ID}";
-    let lineUserId = "";
-
-    async function main() {{
-        try {{
-            if (!LIFF_ID) {{
-                showError("ยังไม่ได้ตั้งค่า LIFF_ID ในระบบ");
-                return;
-            }}
-
-            await liff.init({{ liffId: LIFF_ID }});
-
-            if (!liff.isLoggedIn()) {{
-                liff.login();
-                return;
-            }}
-
-            const profile = await liff.getProfile();
-            lineUserId = profile.userId;
-
-        }} catch (err) {{
-            console.error(err);
-            showError("เปิดหน้าลงทะเบียนไม่สำเร็จ กรุณาลองใหม่");
-        }}
-    }}
-
-    async function submitRegister() {{
-        const fullName = document.getElementById("full_name").value.trim();
-        const studentCode = document.getElementById("student_code").value.trim();
-        const classroom = document.getElementById("classroom").value.trim();
-        const btn = document.getElementById("submitBtn");
-
-        if (!lineUserId) {{
-            showError("ไม่พบ LINE User ID กรุณาเปิดผ่าน LINE อีกครั้ง");
-            return;
-        }}
-
-        if (!fullName || !studentCode || !classroom) {{
-            showError("กรุณากรอกข้อมูลให้ครบ");
-            return;
-        }}
-
-        btn.disabled = true;
-        btn.innerText = "กำลังบันทึก...";
-
-        try {{
-            const res = await fetch("/api/register", {{
-                method: "POST",
-                headers: {{
-                    "Content-Type": "application/json"
-                }},
-                body: JSON.stringify({{
-                    line_user_id: lineUserId,
-                    full_name: fullName,
-                    student_code: studentCode,
-                    classroom: classroom
-                }})
-            }});
-
-            const data = await res.json();
-
-            if (data.ok) {{
-                showSuccess("ลงทะเบียนสำเร็จ กำลังกลับไปที่แชท...");
-
-                setTimeout(() => {{
-                    if (liff.isInClient()) {{
-                        liff.closeWindow();
-                    }}
-                }}, 1200);
-
-            }} else {{
-                showError(data.message || "บันทึกไม่สำเร็จ");
-            }}
-
-        }} catch (err) {{
-            console.error(err);
-            showError("เกิดข้อผิดพลาดในการบันทึกข้อมูล");
-        }}
-
-        btn.disabled = false;
-        btn.innerText = "บันทึกข้อมูล";
-    }}
-
-    function showSuccess(message) {{
-        const box = document.getElementById("statusBox");
-        box.className = "status success";
-        box.style.display = "block";
-        box.innerText = message;
-    }}
-
-    function showError(message) {{
-        const box = document.getElementById("statusBox");
-        box.className = "status error";
-        box.style.display = "block";
-        box.innerText = message;
-    }}
-
-    main();
-</script>
-
-</body>
-</html>
-    """
-
-    return html
+@app.route("/teacher-setup")
+def teacher_setup_page():
+    return render_template(
+        "teacher_setup.html",
+        liff_id=LIFF_TEACHER_SETUP_ID
+    )
 
 
-@app.route("/api/register", methods=["POST"])
-def api_register():
-    """
-    API ที่หน้าเว็บ /register ส่งข้อมูลเข้ามา
-    """
+@app.route("/teacher-assignment")
+def teacher_assignment_page():
+    return render_template(
+        "teacher_assignment.html",
+        liff_id=LIFF_TEACHER_ASSIGNMENT_ID
+    )
 
-    try:
-        data = request.get_json()
 
-        line_user_id = str(data.get("line_user_id", "")).strip()
-        full_name = str(data.get("full_name", "")).strip()
-        student_code = str(data.get("student_code", "")).strip()
-        classroom = str(data.get("classroom", "")).strip()
+@app.route("/teacher-pending")
+def teacher_pending_page():
+    return render_template(
+        "teacher_pending.html",
+        liff_id=LIFF_TEACHER_PENDING_ID
+    )
 
-        if not line_user_id or not full_name or not student_code or not classroom:
-            return jsonify({
-                "ok": False,
-                "message": "ข้อมูลไม่ครบ"
-            }), 400
 
-        register_user_sqlite(
-            line_user_id,
-            full_name,
-            student_code,
-            classroom
-        )
+@app.route("/teacher-questions")
+def teacher_questions_page():
+    return render_template(
+        "teacher_questions.html",
+        liff_id=LIFF_TEACHER_QUESTIONS_ID
+    )
 
-        append_user(
-            now_text(),
-            line_user_id,
-            full_name,
-            student_code,
-            classroom,
-            "student"
-        )
 
-        clear_state(line_user_id)
-        link_main_menu(line_user_id)
-
-        try:
-            line_bot_api.push_message(
-                line_user_id,
-                TextSendMessage(
-                    text=(
-                        "ลงทะเบียนสำเร็จ\n\n"
-                        f"ชื่อ: {full_name}\n"
-                        f"เลขที่: {student_code}\n"
-                        f"ห้อง: {classroom}\n\n"
-                        "ตอนนี้สามารถใช้เมนูหลักได้แล้ว"
-                    )
-                )
-            )
-        except Exception as e:
-            print("push register success message error:", e)
-
-        return jsonify({
-            "ok": True,
-            "message": "ลงทะเบียนสำเร็จ"
-        })
-
-    except Exception as e:
-        print("api_register error:", e)
-        return jsonify({
-            "ok": False,
-            "message": "เกิดข้อผิดพลาดในระบบ"
-        }), 500
+@app.route("/teacher-announce")
+def teacher_announce_page():
+    return render_template(
+        "teacher_announce.html",
+        liff_id=LIFF_TEACHER_ANNOUNCE_ID
+    )
 
 
 # =========================
-# LINE WEBHOOK
+# APIs
+# =========================
+
+@app.route("/api/teacher/setup", methods=["POST"])
+def api_teacher_setup():
+    try:
+        data = request.get_json()
+
+        teacher_line_user_id = data.get("teacher_line_user_id", "").strip()
+        teacher_name = data.get("teacher_name", "").strip()
+        rooms_text = data.get("rooms", "").strip()
+
+        if not teacher_line_user_id:
+            return jsonify(success=False, message="ไม่พบ LINE userId"), 400
+
+        if not teacher_name:
+            return jsonify(success=False, message="กรุณากรอกชื่อครู"), 400
+
+        rooms = parse_rooms(rooms_text)
+
+        if not rooms:
+            return jsonify(success=False, message="กรุณากรอกห้องที่ดูแล"), 400
+
+        spreadsheet = get_spreadsheet()
+        ensure_main_sheets(spreadsheet)
+
+        save_teacher_rooms(
+            spreadsheet,
+            teacher_line_user_id,
+            teacher_name,
+            rooms
+        )
+
+        created_sheets = []
+        for room in rooms:
+            created_sheets.append(
+                create_classroom_sheet_if_not_exists(spreadsheet, room)
+            )
+
+        return jsonify(
+            success=True,
+            message="บันทึกเรียบร้อยแล้ว",
+            rooms=rooms,
+            sheets=created_sheets
+        )
+
+    except Exception as e:
+        print("api_teacher_setup error:", e)
+        return jsonify(success=False, message=str(e)), 500
+
+
+@app.route("/api/teacher/rooms", methods=["GET"])
+def api_teacher_rooms():
+    try:
+        teacher_line_user_id = request.args.get("teacher_line_user_id", "").strip()
+
+        if not teacher_line_user_id:
+            return jsonify(success=False, message="ไม่พบ LINE userId"), 400
+
+        spreadsheet = get_spreadsheet()
+        ensure_main_sheets(spreadsheet)
+
+        rooms = get_teacher_rooms(spreadsheet, teacher_line_user_id)
+
+        return jsonify(success=True, rooms=rooms)
+
+    except Exception as e:
+        print("api_teacher_rooms error:", e)
+        return jsonify(success=False, message=str(e)), 500
+
+
+@app.route("/api/teacher/assignment", methods=["POST"])
+def api_teacher_assignment():
+    try:
+        data = request.get_json()
+
+        teacher_line_user_id = data.get("teacher_line_user_id", "").strip()
+        classroom = data.get("classroom", "").strip()
+        title = data.get("title", "").strip()
+        description = data.get("description", "").strip()
+        start_date = data.get("start_date", "").strip()
+        due_date = data.get("due_date", "").strip()
+        max_score = data.get("max_score", "").strip()
+
+        if not teacher_line_user_id:
+            return jsonify(success=False, message="ไม่พบ LINE userId"), 400
+
+        if not classroom:
+            return jsonify(success=False, message="กรุณาเลือกห้อง"), 400
+
+        if not title:
+            return jsonify(success=False, message="กรุณากรอกชื่องาน"), 400
+
+        spreadsheet = get_spreadsheet()
+        ensure_main_sheets(spreadsheet)
+
+        assignment_id = "A" + uuid.uuid4().hex[:10]
+
+        ws = spreadsheet.worksheet("assignments")
+        ws.append_row([
+            assignment_id,
+            classroom,
+            title,
+            description,
+            start_date,
+            due_date,
+            max_score,
+            teacher_line_user_id,
+            now_text()
+        ])
+
+        add_assignment_header_to_classroom_sheet(
+            spreadsheet,
+            classroom,
+            title
+        )
+
+        return jsonify(
+            success=True,
+            message="บันทึกงานเรียบร้อยแล้ว",
+            assignment_id=assignment_id
+        )
+
+    except Exception as e:
+        print("api_teacher_assignment error:", e)
+        return jsonify(success=False, message=str(e)), 500
+
+
+@app.route("/api/teacher/assignments", methods=["GET"])
+def api_teacher_assignments():
+    try:
+        classroom = request.args.get("classroom", "").strip()
+
+        spreadsheet = get_spreadsheet()
+        ensure_main_sheets(spreadsheet)
+
+        ws = spreadsheet.worksheet("assignments")
+        records = ws.get_all_records()
+
+        result = []
+
+        for row in records:
+            if classroom and str(row.get("classroom")) != classroom:
+                continue
+
+            result.append({
+                "assignment_id": row.get("assignment_id"),
+                "classroom": row.get("classroom"),
+                "title": row.get("title"),
+                "due_date": row.get("due_date"),
+                "max_score": row.get("max_score")
+            })
+
+        return jsonify(success=True, assignments=result)
+
+    except Exception as e:
+        print("api_teacher_assignments error:", e)
+        return jsonify(success=False, message=str(e)), 500
+
+
+@app.route("/api/teacher/pending", methods=["GET"])
+def api_teacher_pending():
+    try:
+        classroom = request.args.get("classroom", "").strip()
+        assignment_id = request.args.get("assignment_id", "").strip()
+
+        if not classroom:
+            return jsonify(success=False, message="กรุณาเลือกห้อง"), 400
+
+        if not assignment_id:
+            return jsonify(success=False, message="กรุณาเลือกงาน"), 400
+
+        spreadsheet = get_spreadsheet()
+        ensure_main_sheets(spreadsheet)
+
+        users_ws = spreadsheet.worksheet("users")
+        submissions_ws = spreadsheet.worksheet("submissions")
+
+        users = users_ws.get_all_records()
+        submissions = submissions_ws.get_all_records()
+
+        submitted_user_ids = set()
+
+        for sub in submissions:
+            if str(sub.get("assignment_id")) == assignment_id:
+                submitted_user_ids.add(str(sub.get("student_line_user_id")))
+
+        pending_students = []
+
+        for user in users:
+            if str(user.get("classroom")) != classroom:
+                continue
+
+            if str(user.get("role")) != "student":
+                continue
+
+            line_user_id = str(user.get("line_user_id"))
+
+            if line_user_id not in submitted_user_ids:
+                pending_students.append({
+                    "student_name": user.get("full_name"),
+                    "student_code": user.get("student_code"),
+                    "line_user_id": line_user_id
+                })
+
+        return jsonify(success=True, students=pending_students)
+
+    except Exception as e:
+        print("api_teacher_pending error:", e)
+        return jsonify(success=False, message=str(e)), 500
+
+
+@app.route("/api/teacher/questions", methods=["GET"])
+def api_teacher_questions():
+    try:
+        teacher_line_user_id = request.args.get("teacher_line_user_id", "").strip()
+
+        spreadsheet = get_spreadsheet()
+        ensure_main_sheets(spreadsheet)
+
+        rooms = get_teacher_rooms(spreadsheet, teacher_line_user_id)
+
+        ws = spreadsheet.worksheet("questions")
+        records = ws.get_all_records()
+
+        questions = []
+
+        for row in records:
+            status = str(row.get("status", "")).strip()
+
+            if status != "pending":
+                continue
+
+            if rooms and str(row.get("classroom")) not in rooms:
+                continue
+
+            questions.append({
+                "question_id": row.get("question_id"),
+                "created_at": row.get("created_at"),
+                "student_line_user_id": row.get("student_line_user_id"),
+                "student_name": row.get("student_name"),
+                "classroom": row.get("classroom"),
+                "question_text": row.get("question_text")
+            })
+
+        return jsonify(success=True, questions=questions)
+
+    except Exception as e:
+        print("api_teacher_questions error:", e)
+        return jsonify(success=False, message=str(e)), 500
+
+
+@app.route("/api/teacher/questions/answer", methods=["POST"])
+def api_teacher_answer_question():
+    try:
+        data = request.get_json()
+
+        question_id = data.get("question_id", "").strip()
+        answer_text = data.get("answer_text", "").strip()
+        teacher_line_user_id = data.get("teacher_line_user_id", "").strip()
+
+        if not question_id:
+            return jsonify(success=False, message="ไม่พบ question_id"), 400
+
+        if not answer_text:
+            return jsonify(success=False, message="กรุณากรอกคำตอบ"), 400
+
+        spreadsheet = get_spreadsheet()
+        ensure_main_sheets(spreadsheet)
+
+        ws = spreadsheet.worksheet("questions")
+        records = ws.get_all_records()
+
+        target_row = None
+        student_line_user_id = ""
+
+        for i, row in enumerate(records, start=2):
+            if str(row.get("question_id")) == question_id:
+                target_row = i
+                student_line_user_id = row.get("student_line_user_id", "")
+                break
+
+        if not target_row:
+            return jsonify(success=False, message="ไม่พบคำถามนี้"), 404
+
+        ws.update(
+            f"G{target_row}:J{target_row}",
+            [[
+                "answered",
+                answer_text,
+                now_text(),
+                teacher_line_user_id
+            ]]
+        )
+
+        # ถ้าต้องการ push กลับนักเรียน เปิดใช้ภายหลังได้
+        # if student_line_user_id:
+        #     line_bot_api.push_message(
+        #         student_line_user_id,
+        #         TextSendMessage(text=f"ครูตอบคำถามแล้ว:\n{answer_text}")
+        #     )
+
+        return jsonify(success=True, message="ตอบคำถามเรียบร้อยแล้ว")
+
+    except Exception as e:
+        print("api_teacher_answer_question error:", e)
+        return jsonify(success=False, message=str(e)), 500
+
+
+@app.route("/api/teacher/announce", methods=["POST"])
+def api_teacher_announce():
+    try:
+        data = request.get_json()
+
+        teacher_line_user_id = data.get("teacher_line_user_id", "").strip()
+        teacher_name = data.get("teacher_name", "").strip()
+        classroom = data.get("classroom", "").strip()
+        message = data.get("message", "").strip()
+
+        if not teacher_line_user_id:
+            return jsonify(success=False, message="ไม่พบ LINE userId"), 400
+
+        if not classroom:
+            return jsonify(success=False, message="กรุณาเลือกห้อง"), 400
+
+        if not message:
+            return jsonify(success=False, message="กรุณากรอกข้อความประกาศ"), 400
+
+        spreadsheet = get_spreadsheet()
+        ensure_main_sheets(spreadsheet)
+
+        if not teacher_name:
+            teacher_name = get_teacher_name(spreadsheet, teacher_line_user_id)
+
+        ws = spreadsheet.worksheet("announcements")
+        announcement_id = "N" + uuid.uuid4().hex[:10]
+
+        ws.append_row([
+            announcement_id,
+            now_text(),
+            teacher_line_user_id,
+            teacher_name,
+            classroom,
+            message
+        ])
+
+        return jsonify(
+            success=True,
+            message="บันทึกประกาศเรียบร้อยแล้ว",
+            announcement_id=announcement_id
+        )
+
+    except Exception as e:
+        print("api_teacher_announce error:", e)
+        return jsonify(success=False, message=str(e)), 500
+
+
+# =========================
+# LINE Webhook
 # =========================
 
 @app.route("/callback", methods=["POST"])
@@ -598,519 +893,24 @@ def callback():
     return "OK"
 
 
-# =========================
-# MESSAGE HELPERS
-# =========================
-
-def main_menu_text():
-    return TextSendMessage(
-        text="เมนูหลัก\n\nเลือกคำสั่งที่ต้องการ",
-        quick_reply=QuickReply(items=[
-            QuickReplyButton(action=MessageAction(label="ส่งงาน", text="ส่งงาน")),
-            QuickReplyButton(action=MessageAction(label="งานค้าง", text="งานค้าง")),
-            QuickReplyButton(action=MessageAction(label="ประกาศ", text="ประกาศจากครู")),
-            QuickReplyButton(action=MessageAction(label="ถามครูนัท", text="ถามครูนัท")),
-        ])
-    )
-
-
-def register_guide_message():
-    return TextSendMessage(
-        text=(
-            "ระบบลงทะเบียน\n\n"
-            "กรุณากดปุ่มลงทะเบียนที่เมนูด้านล่าง\n"
-            "แล้วกรอกข้อมูลในหน้าเว็บได้เลย\n\n"
-            "ถ้าหน้าเว็บไม่เปิด ให้พิมพ์:\n"
-            "ลิงก์ลงทะเบียน"
-        )
-    )
-
-
-def need_register_message():
-    return TextSendMessage(
-        text=(
-            "คุณยังไม่ได้ลงทะเบียน\n\n"
-            "กรุณากดเมนูลงทะเบียนด้านล่าง\n"
-            "หรือพิมพ์: ลิงก์ลงทะเบียน"
-        )
-    )
-
-
-def require_registered(event):
-    user_id = event.source.user_id
-    user = get_user(user_id)
-
-    if not user:
-        link_register_menu(user_id)
-        line_bot_api.reply_message(
-            event.reply_token,
-            need_register_message()
-        )
-        return False
-
-    return True
-
-
-def get_register_link():
-    base_url = os.getenv("BASE_URL", "").strip()
-
-    if base_url:
-        return base_url.rstrip("/") + "/register"
-
-    return "/register"
-
-
-# =========================
-# LINE EVENTS
-# =========================
-
-@handler.add(FollowEvent)
-def handle_follow(event):
-    user_id = event.source.user_id
-
-    user = get_user(user_id)
-
-    if user:
-        link_main_menu(user_id)
-        text = "ยินดีต้อนรับกลับเข้าสู่ระบบส่งงาน\n\nกดเมนูด้านล่างเพื่อใช้งานได้เลย"
-    else:
-        link_register_menu(user_id)
-        text = (
-            "ยินดีต้อนรับเข้าสู่ระบบส่งงาน\n\n"
-            "กรุณากดเมนูลงทะเบียนด้านล่างเพื่อกรอกข้อมูล"
-        )
-
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=text)
-    )
-
-
 @handler.add(MessageEvent, message=TextMessage)
-def handle_text(event):
+def handle_message(event):
     user_text = event.message.text.strip()
-    user_id = event.source.user_id
+    reply_token = event.reply_token
 
-    state_row = get_state(user_id)
-
-    # =========================
-    # ลิงก์ลงทะเบียน
-    # =========================
-
-    if user_text in ["ลิงก์ลงทะเบียน", "ลงทะเบียน", "สมัคร"]:
-        clear_state(user_id)
-        link_register_menu(user_id)
-
-        register_url = get_register_link()
-
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(
-                text=(
-                    "กดลิงก์นี้เพื่อลงทะเบียน:\n"
-                    f"{register_url}"
-                )
-            )
-        )
+    if user_text == "ทดสอบ":
+        reply_text(reply_token, "บอททำงานปกติครับ")
         return
 
-    # =========================
-    # สมัครแบบพิมพ์เอง สำรองไว้
-    # =========================
-
-    if user_text.startswith("สมัคร "):
-        parts = user_text.split()
-
-        if len(parts) < 4:
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(
-                    text=(
-                        "รูปแบบไม่ถูกต้อง\n\n"
-                        "แนะนำให้กดเมนูลงทะเบียนเพื่อกรอกผ่านหน้าเว็บ\n\n"
-                        "หรือพิมพ์แบบนี้:\n"
-                        "สมัคร สมชาย ใจดี 1 401"
-                    )
-                )
-            )
-            return
-
-        classroom = parts[-1]
-        student_code = parts[-2]
-        full_name = " ".join(parts[1:-2])
-
-        register_user_sqlite(user_id, full_name, student_code, classroom)
-
-        append_user(
-            now_text(),
-            user_id,
-            full_name,
-            student_code,
-            classroom,
-            "student"
-        )
-
-        clear_state(user_id)
-        link_main_menu(user_id)
-
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(
-                text=(
-                    "ลงทะเบียนสำเร็จ\n\n"
-                    f"ชื่อ: {full_name}\n"
-                    f"เลขที่: {student_code}\n"
-                    f"ห้อง: {classroom}\n\n"
-                    "ตอนนี้สามารถใช้เมนูหลักได้แล้ว"
-                )
-            )
-        )
-        return
-
-    # =========================
-    # เมนู
-    # =========================
-
-    if user_text in ["เมนู", "menu", "Menu"]:
-        clear_state(user_id)
-
-        if get_user(user_id):
-            link_main_menu(user_id)
-            line_bot_api.reply_message(event.reply_token, main_menu_text())
-        else:
-            link_register_menu(user_id)
-            line_bot_api.reply_message(event.reply_token, register_guide_message())
-        return
-
-    # =========================
-    # ถ้ายังไม่ลงทะเบียน ห้ามใช้เมนูอื่น
-    # =========================
-
-    if user_text in ["ส่งงาน", "งานค้าง", "ประกาศจากครู", "ถามครูนัท", "สถานะของฉัน"]:
-        if not require_registered(event):
-            return
-
-    # =========================
-    # ส่งงาน
-    # =========================
-
-    if user_text == "ส่งงาน":
-        clear_state(user_id)
-        save_state(user_id, "waiting_homework_title")
-
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(
-                text=(
-                    "ระบบส่งงาน\n\n"
-                    "กรุณาพิมพ์ชื่องานก่อน\n\n"
-                    "ตัวอย่าง:\n"
-                    "งานที่ 1\n\n"
-                    "หมายเหตุ: ชื่องานควรตรงกับในชีต assignments"
-                )
-            )
-        )
-        return
-
-    # =========================
-    # งานค้าง
-    # =========================
-
-    if user_text == "งานค้าง":
-        user = get_user(user_id)
-
-        if not user:
-            link_register_menu(user_id)
-            line_bot_api.reply_message(event.reply_token, need_register_message())
-            return
-
-        _, role, full_name, student_code, classroom = user
-
-        pending = get_pending_assignments(user_id, classroom)
-
-        if len(pending) == 0:
-            text = "งานค้าง\n\nตอนนี้ยังไม่มีงานค้าง"
-        else:
-            lines = ["งานค้างของคุณ\n"]
-
-            for i, item in enumerate(pending, start=1):
-                title = item.get("title", "")
-                due_date = item.get("due_date", "")
-                max_score = item.get("max_score", "")
-
-                lines.append(
-                    f"{i}. {title}\n"
-                    f"กำหนดส่ง: {due_date or '-'}\n"
-                    f"คะแนนเต็ม: {max_score or '-'}"
-                )
-
-            text = "\n\n".join(lines)
-
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=text)
-        )
-        return
-
-    # =========================
-    # ประกาศจากครู
-    # =========================
-
-    if user_text == "ประกาศจากครู":
-        announcements = get_latest_announcements(limit=5)
-
-        if not announcements:
-            text = "ประกาศจากครู\n\nตอนนี้ยังไม่มีประกาศ"
-        else:
-            lines = ["ประกาศจากครู\n"]
-
-            for i, row in enumerate(announcements, start=1):
-                created_at = row.get("created_at", "")
-                title = row.get("title", "")
-                body = row.get("body", "")
-
-                lines.append(
-                    f"{i}. {title}\n"
-                    f"{body}\n"
-                    f"วันที่: {created_at}"
-                )
-
-            text = "\n\n".join(lines)
-
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=text)
-        )
-        return
-
-    # =========================
-    # ถามครูนัท
-    # =========================
-
-    if user_text == "ถามครูนัท":
-        save_state(user_id, "waiting_question")
-
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(
-                text=(
-                    "ถามครูนัท\n\n"
-                    "พิมพ์คำถามที่ต้องการถามได้เลย\n"
-                    "เช่น ไม่เข้าใจการบ้านข้อ 3"
-                )
-            )
-        )
-        return
-
-    # =========================
-    # สถานะของฉัน
-    # =========================
-
-    if user_text == "สถานะของฉัน":
-        user = get_user(user_id)
-
-        if not user:
-            link_register_menu(user_id)
-            line_bot_api.reply_message(event.reply_token, need_register_message())
-            return
-
-        _, role, full_name, student_code, classroom = user
-        count = get_submission_count(user_id)
-
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(
-                text=(
-                    "ข้อมูลของฉัน\n\n"
-                    f"ชื่อ: {full_name}\n"
-                    f"เลขที่: {student_code}\n"
-                    f"ห้อง: {classroom}\n"
-                    f"จำนวนงานที่ส่ง: {count}"
-                )
-            )
-        )
-        return
-
-    # =========================
-    # จัดการ state
-    # =========================
-
-    if state_row:
-        state, data = state_row
-
-        if state == "waiting_homework_title":
-            homework_title = user_text
-            save_state(user_id, "waiting_homework_file", homework_title)
-
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(
-                    text=(
-                        f"ชื่องาน: {homework_title}\n\n"
-                        "กรุณาส่งรูปภาพหรือไฟล์งานมาได้เลย"
-                    )
-                )
-            )
-            return
-
-        if state == "waiting_question":
-            question = user_text
-            clear_state(user_id)
-
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(
-                    text=(
-                        "รับคำถามแล้ว\n\n"
-                        f"คำถามของคุณ:\n{question}\n\n"
-                        "ตอนนี้ระบบยังไม่ได้เชื่อม AI หรือส่งต่อให้ครูจริง\n"
-                        "ขั้นต่อไปสามารถเพิ่มระบบแจ้งเตือนครูได้"
-                    )
-                )
-            )
-            return
-
-    # =========================
-    # fallback
-    # =========================
-
-    if get_user(user_id):
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text="ไม่พบคำสั่ง\nกรุณากดเมนูด้านล่าง หรือพิมพ์: เมนู")
-        )
-    else:
-        link_register_menu(user_id)
-        line_bot_api.reply_message(
-            event.reply_token,
-            need_register_message()
-        )
-
-
-@handler.add(MessageEvent, message=ImageMessage)
-def handle_image(event):
-    user_id = event.source.user_id
-
-    if not require_registered(event):
-        return
-
-    state_row = get_state(user_id)
-
-    if not state_row or state_row[0] != "waiting_homework_file":
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text="หากต้องการส่งงาน กรุณากดเมนู ส่งงาน ก่อน")
-        )
-        return
-
-    homework_title = state_row[1]
-    message_id = event.message.id
-
-    user = get_user(user_id)
-
-    if not user:
-        link_register_menu(user_id)
-        line_bot_api.reply_message(event.reply_token, need_register_message())
-        return
-
-    _, role, full_name, student_code, classroom = user
-
-    save_submission_sqlite(
-        user_id=user_id,
-        homework_title=homework_title,
-        message_type="image",
-        message_id=message_id,
-        file_name=""
-    )
-
-    append_submission(
-        now_text(),
-        user_id,
-        full_name,
-        student_code,
-        classroom,
-        homework_title,
-        "image",
-        message_id,
-        ""
-    )
-
-    clear_state(user_id)
-
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(
-            text=(
-                "รับงานเรียบร้อย\n\n"
-                f"ชื่องาน: {homework_title}\n"
-                "ประเภท: รูปภาพ"
-            )
-        )
+    reply_text(
+        reply_token,
+        "ได้รับข้อความแล้วครับ"
     )
 
 
-@handler.add(MessageEvent, message=FileMessage)
-def handle_file(event):
-    user_id = event.source.user_id
-
-    if not require_registered(event):
-        return
-
-    state_row = get_state(user_id)
-
-    if not state_row or state_row[0] != "waiting_homework_file":
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text="หากต้องการส่งงาน กรุณากดเมนู ส่งงาน ก่อน")
-        )
-        return
-
-    homework_title = state_row[1]
-    message_id = event.message.id
-    file_name = event.message.file_name
-
-    user = get_user(user_id)
-
-    if not user:
-        link_register_menu(user_id)
-        line_bot_api.reply_message(event.reply_token, need_register_message())
-        return
-
-    _, role, full_name, student_code, classroom = user
-
-    save_submission_sqlite(
-        user_id=user_id,
-        homework_title=homework_title,
-        message_type="file",
-        message_id=message_id,
-        file_name=file_name
-    )
-
-    append_submission(
-        now_text(),
-        user_id,
-        full_name,
-        student_code,
-        classroom,
-        homework_title,
-        "file",
-        message_id,
-        file_name
-    )
-
-    clear_state(user_id)
-
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(
-            text=(
-                "รับงานเรียบร้อย\n\n"
-                f"ชื่องาน: {homework_title}\n"
-                f"ไฟล์: {file_name}"
-            )
-        )
-    )
-
+# =========================
+# Run local
+# =========================
 
 if __name__ == "__main__":
     app.run(debug=True)
