@@ -146,7 +146,8 @@
 </div>
 
 <script>
-    const LIFF_ID = "{{ liff_id }}";
+    const RAW_LIFF_ID = "{{ liff_id }}";
+    const LIFF_ID = String(RAW_LIFF_ID || "").trim().replace("https://liff.line.me/", "");
     let teacherLineUserId = "";
 
     async function main() {
@@ -231,7 +232,7 @@
         }
 
         try {
-            const res = await fetch("/api/teacher/questions/answer", {
+            const res = await fetch("/api/teacher/answer-question", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({

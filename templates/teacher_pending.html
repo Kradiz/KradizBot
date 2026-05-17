@@ -155,7 +155,8 @@
 </div>
 
 <script>
-    const LIFF_ID = "{{ liff_id }}";
+    const RAW_LIFF_ID = "{{ liff_id }}";
+    const LIFF_ID = String(RAW_LIFF_ID || "").trim().replace("https://liff.line.me/", "");
     let teacherLineUserId = "";
 
     async function main() {
@@ -188,7 +189,7 @@
         const select = document.getElementById("classroom");
 
         try {
-            const res = await fetch("/api/teacher/rooms?teacher_line_user_id=" + encodeURIComponent(teacherLineUserId));
+            const res = await fetch("/api/teacher/my-rooms?teacher_line_user_id=" + encodeURIComponent(teacherLineUserId));
             const data = await res.json();
 
             select.innerHTML = "";
@@ -233,7 +234,7 @@
         }
 
         try {
-            const res = await fetch("/api/teacher/assignments?classroom=" + encodeURIComponent(classroom));
+            const res = await fetch("/api/teacher/pending?teacher_line_user_id=" + encodeURIComponent(teacherLineUserId) + "&classroom=" + encodeURIComponent(classroom));
             const data = await res.json();
 
             select.innerHTML = "";
@@ -284,7 +285,8 @@
         }
 
         try {
-            const url = "/api/teacher/pending?classroom=" + encodeURIComponent(classroom) +
+            const url = "/api/teacher/pending?teacher_line_user_id=" + encodeURIComponent(teacherLineUserId) +
+                "&classroom=" + encodeURIComponent(classroom) +
                 "&assignment_id=" + encodeURIComponent(assignmentId);
 
             const res = await fetch(url);
@@ -295,14 +297,14 @@
                 return;
             }
 
-            const students = data.students || [];
+            const students = data.pending_students || [];
 
             if (students.length === 0) {
                 showMessage("นักเรียนส่งครบแล้ว", "success");
                 return;
             }
 
-            showMessage("พบ " + students.length + " คนที่ยังไม่ส่ง", "info");
+            showMessage("พบ " + students.length + " คนที่ยังไม่ส่ง", "success");
 
             students.forEach((s, index) => {
                 const div = document.createElement("div");

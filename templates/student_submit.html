@@ -190,7 +190,8 @@
 </div>
 
 <script>
-    const LIFF_ID = "{{ liff_id }}";
+    const RAW_LIFF_ID = "{{ liff_id }}";
+    const LIFF_ID = String(RAW_LIFF_ID || "").trim().replace("https://liff.line.me/", "");
     let lineUserId = "";
     let assignments = [];
 
@@ -224,7 +225,7 @@
         const select = document.getElementById("assignmentSelect");
 
         try {
-            const res = await fetch("/api/student/assignments?line_user_id=" + encodeURIComponent(lineUserId));
+            const res = await fetch("/api/student/assignments?student_line_user_id=" + encodeURIComponent(lineUserId));
             const data = await res.json();
 
             select.innerHTML = "";

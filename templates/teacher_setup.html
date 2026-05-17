@@ -189,7 +189,8 @@
   </div>
 
   <script>
-    const LIFF_ID = "{{ liff_id }}";
+    const RAW_LIFF_ID = "{{ liff_id }}";
+    const LIFF_ID = String(RAW_LIFF_ID || "").trim().replace("https://liff.line.me/", "");
     let profile = null;
 
     async function main() {
