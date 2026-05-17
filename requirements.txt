@@ -1,6 +1,9 @@
-Flask==3.0.3
-line-bot-sdk==3.11.0
-python-dotenv==1.0.1
-gunicorn==22.0.0
-gspread==6.1.4
-google-auth==2.35.0
+Flask
+python-dotenv
+gspread
+google-auth
+google-api-python-client
+line-bot-sdk
+gunicorn
+requests
+tzdata

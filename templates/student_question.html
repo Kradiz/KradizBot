@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ถามคำถาม</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: Arial, "Tahoma", sans-serif;
+            background: #f4f7fb;
+            margin: 0;
+            padding: 16px;
+            color: #222;
+        }
+
+        .container {
+            max-width: 560px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 18px;
+            padding: 22px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        }
+
+        h1 {
+            text-align: center;
+            color: #1f5eff;
+            font-size: 24px;
+            margin: 0 0 8px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 18px;
+        }
+
+        .hint {
+            background: #eef4ff;
+            border: 1px solid #c8d9ff;
+            color: #2450a4;
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            margin-top: 14px;
+            margin-bottom: 6px;
+            font-weight: bold;
+            font-size: 15px;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 140px;
+            padding: 13px 14px;
+            border: 1px solid #d6dbe6;
+            border-radius: 12px;
+            font-size: 16px;
+            outline: none;
+            background: #fbfcff;
+            resize: vertical;
+            line-height: 1.5;
+        }
+
+        textarea:focus {
+            border-color: #1f5eff;
+            background: #ffffff;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 22px;
+            padding: 14px;
+            border: none;
+            border-radius: 14px;
+            background: #1f5eff;
+            color: #ffffff;
+            font-size: 17px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            background: #9aa9d6;
+            cursor: not-allowed;
+        }
+
+        .message {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 12px;
+            display: none;
+            font-size: 15px;
+            line-height: 1.5;
+            white-space: pre-line;
+        }
+
+        .success {
+            background: #e8f8ee;
+            color: #137333;
+            border: 1px solid #bde8ca;
+        }
+
+        .error {
+            background: #fdeaea;
+            color: #b3261e;
+            border: 1px solid #f4b4b4;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>ถามคำถาม</h1>
+    <div class="subtitle">
+        ส่งคำถามถึงครูประจำห้องหรือครูผู้ดูแล
+    </div>
+
+    <div class="hint">
+        <b>ตัวอย่างคำถาม</b><br>
+        - ใบงานที่ 1 ต้องส่งภายในวันไหนครับ<br>
+        - ถ้าส่งเป็นรูปถ่ายสมุดได้ไหมคะ<br>
+        - งานที่ 2 ต้องทำกี่ข้อครับ
+    </div>
+
+    <label for="questionText">คำถามของนักเรียน</label>
+    <textarea id="questionText" placeholder="ตัวอย่าง: ใบงานที่ 1 ต้องส่งภายในวันไหนครับ"></textarea>
+
+    <button id="sendBtn" onclick="sendQuestion()">ส่งคำถาม</button>
+
+    <div id="messageBox" class="message"></div>
+</div>
+
+<script>
+    const LIFF_ID = "{{ liff_id }}";
+    let lineUserId = "";
+
+    async function main() {
+        try {
+            await liff.init({ liffId: LIFF_ID });
+
+            if (!liff.isLoggedIn()) {
+                liff.login();
+                return;
+            }
+
+            const profile = await liff.getProfile();
+            lineUserId = profile.userId;
+
+        } catch (error) {
+            showMessage("เปิด LIFF ไม่สำเร็จ: " + error.message, "error");
+        }
+    }
+
+    function showMessage(text, type) {
+        const box = document.getElementById("messageBox");
+        box.innerText = text;
+        box.className = "message " + type;
+        box.style.display = "block";
+    }
+
+    async function sendQuestion() {
+        const questionText = document.getElementById("questionText").value.trim();
+        const btn = document.getElementById("sendBtn");
+
+        if (!lineUserId) {
+            showMessage("ไม่พบ LINE userId กรุณาปิดแล้วเปิดใหม่", "error");
+            return;
+        }
+
+        if (!questionText) {
+            showMessage("กรุณากรอกคำถาม", "error");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "กำลังส่ง...";
+
+        try {
+            const res = await fetch("/api/student/question", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    line_user_id: lineUserId,
+                    question_text: questionText
+                })
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                showMessage("ส่งคำถามเรียบร้อยแล้ว", "success");
+                btn.innerText = "ส่งสำเร็จ";
+
+                setTimeout(() => {
+                    if (liff.isInClient()) {
+                        liff.closeWindow();
+                    }
+                }, 1500);
+
+            } else {
+                showMessage(data.message || "ส่งคำถามไม่สำเร็จ", "error");
+                btn.disabled = false;
+                btn.innerText = "ส่งคำถาม";
+            }
+
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+            btn.disabled = false;
+            btn.innerText = "ส่งคำถาม";
+        }
+    }
+
+    main();
+</script>
+
+</body>
+</html>

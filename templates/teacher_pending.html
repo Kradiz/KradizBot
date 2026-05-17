@@ -2,154 +2,325 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <title>งานค้าง</title>
+    <title>รายชื่อนักเรียนที่ยังไม่ส่งงาน</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
     <style>
-        * { box-sizing: border-box; font-family: Arial, sans-serif; }
-        body { margin: 0; padding: 16px; background: #f5f7fb; color: #222; }
-        .container { max-width: 480px; margin: 0 auto; background: white; border-radius: 18px; padding: 20px; box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
-        h1 { font-size: 22px; margin: 0 0 8px; text-align: center; }
-        label { display: block; font-weight: bold; margin-top: 14px; margin-bottom: 6px; font-size: 15px; }
-        select { width: 100%; padding: 12px; border: 1px solid #d0d7de; border-radius: 12px; font-size: 16px; }
-        button { width: 100%; margin-top: 18px; padding: 14px; background: #06c755; color: white; border: none; border-radius: 14px; font-size: 17px; font-weight: bold; }
-        .list { margin-top: 18px; }
-        .item { padding: 12px; border: 1px solid #ddd; border-radius: 12px; margin-bottom: 10px; background: #fafafa; }
-        .empty { margin-top: 18px; padding: 14px; background: #e8f8ee; color: #087a34; border-radius: 12px; }
-        .error { margin-top: 18px; padding: 14px; background: #fff0f0; color: #b00020; border-radius: 12px; }
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: Arial, "Tahoma", sans-serif;
+            background: #f4f7fb;
+            margin: 0;
+            padding: 16px;
+            color: #222;
+        }
+
+        .container {
+            max-width: 560px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 18px;
+            padding: 22px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        }
+
+        h1 {
+            text-align: center;
+            color: #1f5eff;
+            font-size: 23px;
+            margin: 0 0 8px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 18px;
+        }
+
+        .hint {
+            background: #eef4ff;
+            border: 1px solid #c8d9ff;
+            color: #2450a4;
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            margin-top: 14px;
+            margin-bottom: 6px;
+            font-weight: bold;
+            font-size: 15px;
+        }
+
+        select {
+            width: 100%;
+            padding: 13px 14px;
+            border: 1px solid #d6dbe6;
+            border-radius: 12px;
+            font-size: 16px;
+            background: #fbfcff;
+            outline: none;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 18px;
+            padding: 14px;
+            border: none;
+            border-radius: 14px;
+            background: #1f5eff;
+            color: #fff;
+            font-size: 17px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .card {
+            border: 1px solid #d6dbe6;
+            border-radius: 14px;
+            padding: 12px;
+            margin-top: 10px;
+            background: #fbfcff;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        .message {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 12px;
+            display: none;
+            font-size: 15px;
+            line-height: 1.5;
+            white-space: pre-line;
+        }
+
+        .success {
+            background: #e8f8ee;
+            color: #137333;
+            border: 1px solid #bde8ca;
+        }
+
+        .error {
+            background: #fdeaea;
+            color: #b3261e;
+            border: 1px solid #f4b4b4;
+        }
+
+        .info {
+            background: #eef4ff;
+            color: #2450a4;
+            border: 1px solid #c8d9ff;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>รายชื่อนักเรียนที่ยังไม่ส่งงาน</h1>
 
-        <label>เลือกห้อง</label>
-        <select id="classroom" onchange="loadAssignments()">
-            <option value="">กำลังโหลดห้อง...</option>
-        </select>
-
-        <label>เลือกงาน</label>
-        <select id="assignment">
-            <option value="">กรุณาเลือกห้องก่อน</option>
-        </select>
-
-        <button onclick="loadPending()">ดูรายชื่อที่ยังไม่ส่ง</button>
-
-        <div id="resultBox" class="list"></div>
+<div class="container">
+    <h1>นักเรียนที่ยังไม่ส่งงาน</h1>
+    <div class="subtitle">
+        เลือกห้องและเลือกงาน เพื่อดูรายชื่อนักเรียนที่ยังไม่ส่ง
     </div>
 
-    <script>
-        const LIFF_ID = "{{ liff_id }}";
-        let lineUserId = "";
+    <div class="hint">
+        <b>ตัวอย่างการใช้งาน</b><br>
+        เลือกห้อง: 401<br>
+        เลือกงาน: ใบงานที่ 1 เรื่องแรงและการเคลื่อนที่<br>
+        ระบบจะแสดงรายชื่อนักเรียนที่ยังไม่มีข้อมูลส่งงานในชีต submissions
+    </div>
 
-        async function main() {
-            try {
-                await liff.init({ liffId: LIFF_ID });
+    <label for="classroom">เลือกห้อง</label>
+    <select id="classroom" onchange="loadAssignments()">
+        <option value="">กำลังโหลดห้อง...</option>
+    </select>
 
-                if (!liff.isLoggedIn()) {
-                    liff.login();
-                    return;
-                }
+    <label for="assignment">เลือกงาน</label>
+    <select id="assignment">
+        <option value="">กรุณาเลือกห้องก่อน</option>
+    </select>
 
-                const profile = await liff.getProfile();
-                lineUserId = profile.userId;
+    <button onclick="loadPending()">ดูรายชื่อที่ยังไม่ส่ง</button>
 
-                await loadRooms();
+    <div id="list"></div>
+    <div id="messageBox" class="message"></div>
+</div>
 
-            } catch (error) {
-                showError("เปิด LIFF ไม่สำเร็จ: " + error.message);
+<script>
+    const LIFF_ID = "{{ liff_id }}";
+    let teacherLineUserId = "";
+
+    async function main() {
+        try {
+            await liff.init({ liffId: LIFF_ID });
+
+            if (!liff.isLoggedIn()) {
+                liff.login();
+                return;
             }
+
+            const profile = await liff.getProfile();
+            teacherLineUserId = profile.userId;
+
+            await loadRooms();
+
+        } catch (error) {
+            showMessage("เปิด LIFF ไม่สำเร็จ: " + error.message, "error");
         }
+    }
 
-        async function loadRooms() {
-            const res = await fetch("/api/teacher/rooms?teacher_line_user_id=" + encodeURIComponent(lineUserId));
-            const result = await res.json();
+    function showMessage(text, type) {
+        const box = document.getElementById("messageBox");
+        box.innerText = text;
+        box.className = "message " + type;
+        box.style.display = "block";
+    }
 
-            const select = document.getElementById("classroom");
+    async function loadRooms() {
+        const select = document.getElementById("classroom");
+
+        try {
+            const res = await fetch("/api/teacher/rooms?teacher_line_user_id=" + encodeURIComponent(teacherLineUserId));
+            const data = await res.json();
+
             select.innerHTML = "";
 
-            if (!result.success || result.rooms.length === 0) {
-                select.innerHTML = '<option value="">ยังไม่ได้ตั้งค่าห้อง</option>';
+            if (!data.success) {
+                select.innerHTML = `<option value="">โหลดห้องไม่สำเร็จ</option>`;
+                showMessage(data.message || "โหลดห้องไม่สำเร็จ", "error");
                 return;
             }
 
-            select.innerHTML = '<option value="">เลือกห้อง</option>';
+            const rooms = data.rooms || [];
 
-            result.rooms.forEach(room => {
-                const option = document.createElement("option");
-                option.value = room;
-                option.textContent = room;
-                select.appendChild(option);
+            if (rooms.length === 0) {
+                select.innerHTML = `<option value="">ยังไม่ได้ตั้งค่าห้อง</option>`;
+                showMessage("ยังไม่ได้ตั้งค่าห้อง", "error");
+                return;
+            }
+
+            select.innerHTML = `<option value="">-- เลือกห้อง --</option>`;
+
+            rooms.forEach(room => {
+                const opt = document.createElement("option");
+                opt.value = room;
+                opt.textContent = room;
+                select.appendChild(opt);
             });
+
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+        }
+    }
+
+    async function loadAssignments() {
+        const classroom = document.getElementById("classroom").value;
+        const select = document.getElementById("assignment");
+
+        select.innerHTML = `<option value="">กำลังโหลดงาน...</option>`;
+
+        if (!classroom) {
+            select.innerHTML = `<option value="">กรุณาเลือกห้องก่อน</option>`;
+            return;
         }
 
-        async function loadAssignments() {
-            const classroom = document.getElementById("classroom").value;
-            const select = document.getElementById("assignment");
-
-            select.innerHTML = '<option value="">กำลังโหลดงาน...</option>';
-
-            if (!classroom) {
-                select.innerHTML = '<option value="">กรุณาเลือกห้องก่อน</option>';
-                return;
-            }
-
+        try {
             const res = await fetch("/api/teacher/assignments?classroom=" + encodeURIComponent(classroom));
-            const result = await res.json();
+            const data = await res.json();
 
             select.innerHTML = "";
 
-            if (!result.success || result.assignments.length === 0) {
-                select.innerHTML = '<option value="">ยังไม่มีงาน</option>';
+            if (!data.success) {
+                select.innerHTML = `<option value="">โหลดงานไม่สำเร็จ</option>`;
+                showMessage(data.message || "โหลดงานไม่สำเร็จ", "error");
                 return;
             }
 
-            result.assignments.forEach(item => {
-                const option = document.createElement("option");
-                option.value = item.assignment_id;
-                option.textContent = item.title;
-                select.appendChild(option);
+            const assignments = data.assignments || [];
+
+            if (assignments.length === 0) {
+                select.innerHTML = `<option value="">ยังไม่มีงานในห้องนี้</option>`;
+                return;
+            }
+
+            select.innerHTML = `<option value="">-- เลือกงาน --</option>`;
+
+            assignments.forEach(item => {
+                const opt = document.createElement("option");
+                opt.value = item.assignment_id;
+                opt.textContent = item.title + (item.due_date ? " | " + item.due_date : "");
+                select.appendChild(opt);
             });
+
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+        }
+    }
+
+    async function loadPending() {
+        const classroom = document.getElementById("classroom").value;
+        const assignmentId = document.getElementById("assignment").value;
+        const list = document.getElementById("list");
+
+        list.innerHTML = "";
+        document.getElementById("messageBox").style.display = "none";
+
+        if (!classroom) {
+            showMessage("กรุณาเลือกห้อง", "error");
+            return;
         }
 
-        async function loadPending() {
-            const classroom = document.getElementById("classroom").value;
-            const assignmentId = document.getElementById("assignment").value;
+        if (!assignmentId) {
+            showMessage("กรุณาเลือกงาน", "error");
+            return;
+        }
 
-            if (!classroom) return showError("กรุณาเลือกห้อง");
-            if (!assignmentId) return showError("กรุณาเลือกงาน");
+        try {
+            const url = "/api/teacher/pending?classroom=" + encodeURIComponent(classroom) +
+                "&assignment_id=" + encodeURIComponent(assignmentId);
 
-            const url = "/api/teacher/pending?classroom=" + encodeURIComponent(classroom) + "&assignment_id=" + encodeURIComponent(assignmentId);
             const res = await fetch(url);
-            const result = await res.json();
+            const data = await res.json();
 
-            const box = document.getElementById("resultBox");
-            box.innerHTML = "";
-
-            if (!result.success) {
-                showError(result.message || "โหลดข้อมูลไม่สำเร็จ");
+            if (!data.success) {
+                showMessage(data.message || "โหลดข้อมูลไม่สำเร็จ", "error");
                 return;
             }
 
-            if (result.students.length === 0) {
-                box.innerHTML = '<div class="empty">นักเรียนส่งครบแล้ว</div>';
+            const students = data.students || [];
+
+            if (students.length === 0) {
+                showMessage("นักเรียนส่งครบแล้ว", "success");
                 return;
             }
 
-            result.students.forEach((student, index) => {
+            showMessage("พบ " + students.length + " คนที่ยังไม่ส่ง", "info");
+
+            students.forEach((s, index) => {
                 const div = document.createElement("div");
-                div.className = "item";
-                div.innerHTML = (index + 1) + ". " + student.student_name + "<br>เลขที่/รหัส: " + student.student_code;
-                box.appendChild(div);
+                div.className = "card";
+                div.innerHTML = `
+                    ${index + 1}. ${s.student_name || "-"}<br>
+                    เลขที่ / รหัส: ${s.student_code || "-"}
+                `;
+                list.appendChild(div);
             });
-        }
 
-        function showError(msg) {
-            document.getElementById("resultBox").innerHTML = '<div class="error">' + msg + '</div>';
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
         }
+    }
 
-        main();
-    </script>
+    main();
+</script>
+
 </body>
 </html>

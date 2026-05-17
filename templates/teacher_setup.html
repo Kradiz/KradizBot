@@ -1,137 +1,285 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-    <meta charset="UTF-8">
-    <title>ตั้งค่าห้องที่ครูดูแล</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <meta charset="UTF-8">
+  <title>ตั้งค่าครู</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <style>
-        * { box-sizing: border-box; font-family: Arial, sans-serif; }
-        body { margin: 0; padding: 16px; background: #f5f7fb; color: #222; }
-        .container { max-width: 480px; margin: 0 auto; background: white; border-radius: 18px; padding: 20px; box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
-        h1 { font-size: 22px; margin: 0 0 8px; text-align: center; }
-        .subtitle { font-size: 14px; color: #666; text-align: center; margin-bottom: 20px; line-height: 1.5; }
-        label { display: block; font-weight: bold; margin-top: 14px; margin-bottom: 6px; font-size: 15px; }
-        input, textarea, select { width: 100%; padding: 12px; border: 1px solid #d0d7de; border-radius: 12px; font-size: 16px; outline: none; }
-        textarea { min-height: 90px; resize: vertical; }
-        input:focus, textarea:focus, select:focus { border-color: #06c755; box-shadow: 0 0 0 3px rgba(6,199,85,0.12); }
-        button { width: 100%; margin-top: 22px; padding: 14px; background: #06c755; color: white; border: none; border-radius: 14px; font-size: 17px; font-weight: bold; cursor: pointer; }
-        button:disabled { background: #aaa; }
-        .status { margin-top: 16px; padding: 12px; border-radius: 12px; font-size: 14px; display: none; line-height: 1.5; }
-        .success { display: block; background: #e8f8ee; color: #087a34; border: 1px solid #b7ebc8; }
-        .error { display: block; background: #fff0f0; color: #b00020; border: 1px solid #ffc7c7; }
-        .profile-box { margin-top: 12px; padding: 10px; background: #f1f8f4; border-radius: 12px; font-size: 13px; color: #444; display: none; }
-        .example { background: #f7f7f7; padding: 10px; border-radius: 10px; font-size: 13px; margin-top: 8px; line-height: 1.6; }
-    </style>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f3f6fb;
+      margin: 0;
+      padding: 16px;
+      color: #1f2937;
+    }
+
+    .card {
+      max-width: 480px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+    }
+
+    h1 {
+      font-size: 24px;
+      text-align: center;
+      color: #2563eb;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 14px;
+      color: #6b7280;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    label {
+      display: block;
+      font-weight: bold;
+      margin-top: 14px;
+      margin-bottom: 6px;
+    }
+
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      font-size: 16px;
+      background: #fff;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+    }
+
+    .hint {
+      font-size: 13px;
+      color: #6b7280;
+      margin-top: 4px;
+      line-height: 1.5;
+    }
+
+    .example {
+      background: #eff6ff;
+      border-left: 4px solid #2563eb;
+      padding: 10px;
+      border-radius: 8px;
+      margin-top: 14px;
+      font-size: 14px;
+      color: #1e40af;
+      line-height: 1.6;
+    }
+
+    .warning {
+      background: #fff7ed;
+      border-left: 4px solid #f97316;
+      padding: 10px;
+      border-radius: 8px;
+      margin-top: 14px;
+      font-size: 14px;
+      color: #9a3412;
+      line-height: 1.6;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 20px;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      background: #2563eb;
+      color: white;
+      font-size: 17px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    .message {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 10px;
+      display: none;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .success {
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #86efac;
+    }
+
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+
+    .profile-box {
+      display: none;
+      margin-top: 12px;
+      padding: 10px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      font-size: 13px;
+      color: #374151;
+      word-break: break-all;
+    }
+  </style>
 </head>
+
 <body>
-    <div class="container">
-        <h1>ตั้งค่าห้องที่ครูดูแล</h1>
-        <div class="subtitle">
-            กรอกชื่อครูและห้องที่ดูแล<br>
-            ระบบจะสร้างแท็บสรุปงานแยกตามห้องให้อัตโนมัติ
-        </div>
-
-        <div id="profileBox" class="profile-box"></div>
-
-        <label>ชื่อครู</label>
-        <input type="text" id="teacherName" placeholder="เช่น ครูสมชาย">
-
-        <label>ห้องที่ดูแล</label>
-        <textarea id="rooms" placeholder="เช่น 401,402,403"></textarea>
-
-        <div class="example">
-            ตัวอย่าง:<br>
-            401,402,403<br>
-            หรือ ม.4/1,ม.4/2,ม.4/3
-        </div>
-
-        <button id="saveBtn" onclick="saveData()">บันทึกข้อมูล</button>
-        <div id="statusBox" class="status"></div>
+  <div class="card">
+    <h1>ตั้งค่าครู</h1>
+    <div class="subtitle">
+      ใช้สำหรับตั้งค่าห้องเรียนที่ครูดูแล<br>
+      ต้องกรอกรหัสครูที่ได้รับจากผู้ดูแล
     </div>
 
-    <script>
-        const LIFF_ID = "{{ liff_id }}";
-        let lineUserId = "";
-        let lineDisplayName = "";
+    <div id="profileBox" class="profile-box"></div>
 
-        async function main() {
-            try {
-                await liff.init({ liffId: LIFF_ID });
+    <label>ชื่อครู</label>
+    <input id="teacherName" type="text" placeholder="เช่น ครูสมชาย">
 
-                if (!liff.isLoggedIn()) {
-                    liff.login();
-                    return;
-                }
+    <label>รหัสครู</label>
+    <input id="teacherCode" type="password" placeholder="กรอกรหัสครูที่ได้รับจากผู้ดูแล">
+    <div class="hint">
+      ช่องนี้ใช้ป้องกันไม่ให้นักเรียนหรือบุคคลทั่วไปสมัครเป็นครู
+    </div>
 
-                const profile = await liff.getProfile();
-                lineUserId = profile.userId;
-                lineDisplayName = profile.displayName;
+    <label>ห้องที่ดูแล</label>
+    <input id="rooms" type="text" placeholder="เช่น 401,402,403">
+    <div class="hint">
+      ถ้ามีหลายห้อง ให้คั่นด้วย comma เช่น 401,402,403<br>
+      แนะนำให้ใช้รูปแบบห้องให้ตรงกันทุกที่ เช่น 401
+    </div>
 
-                document.getElementById("profileBox").style.display = "block";
-                document.getElementById("profileBox").innerHTML = "เข้าสู่ระบบด้วย LINE: <b>" + lineDisplayName + "</b>";
+    <div class="example">
+      ตัวอย่างการกรอก:<br>
+      ชื่อครู: ครูสมชาย<br>
+      รหัสครู: TCH-401-2026<br>
+      ห้องที่ดูแล: 401,402
+    </div>
 
-                document.getElementById("teacherName").value = lineDisplayName;
+    <div class="warning">
+      หมายเหตุ:<br>
+      ถ้ารหัสครูไม่ถูกต้อง ระบบจะไม่บันทึกข้อมูล และจะไม่ให้สิทธิ์เมนูครู
+    </div>
 
-            } catch (error) {
-                showError("เปิด LIFF ไม่สำเร็จ: " + error.message);
-            }
+    <button id="saveBtn" onclick="saveTeacher()">บันทึก</button>
+
+    <div id="msg" class="message"></div>
+  </div>
+
+  <script>
+    const LIFF_ID = "{{ liff_id }}";
+    let profile = null;
+
+    async function main() {
+      try {
+        await liff.init({ liffId: LIFF_ID });
+
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
         }
 
-        async function saveData() {
-            const teacherName = document.getElementById("teacherName").value.trim();
-            const rooms = document.getElementById("rooms").value.trim();
-            const btn = document.getElementById("saveBtn");
+        profile = await liff.getProfile();
 
-            if (!teacherName) return showError("กรุณากรอกชื่อครู");
-            if (!rooms) return showError("กรุณากรอกห้องที่ดูแล");
-            if (!lineUserId) return showError("ไม่พบ LINE userId");
+        const profileBox = document.getElementById("profileBox");
+        profileBox.style.display = "block";
+        profileBox.innerHTML =
+          "LINE: " + escapeHtml(profile.displayName || "-") + "<br>" +
+          "User ID: " + escapeHtml(profile.userId || "-");
 
-            btn.disabled = true;
-            btn.innerText = "กำลังบันทึก...";
+      } catch (err) {
+        showMessage("เปิด LIFF ไม่สำเร็จ: " + err.message, false);
+      }
+    }
 
-            try {
-                const res = await fetch("/api/teacher/setup", {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({
-                        teacher_line_user_id: lineUserId,
-                        teacher_name: teacherName,
-                        rooms: rooms
-                    })
-                });
+    function escapeHtml(text) {
+      return String(text)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
 
-                const result = await res.json();
+    function showMessage(text, success) {
+      const msg = document.getElementById("msg");
+      msg.style.display = "block";
+      msg.textContent = text;
+      msg.className = "message " + (success ? "success" : "error");
+    }
 
-                if (!res.ok || !result.success) {
-                    showError(result.message || "บันทึกไม่สำเร็จ");
-                    return;
-                }
+    async function saveTeacher() {
+      const teacherName = document.getElementById("teacherName").value.trim();
+      const teacherCode = document.getElementById("teacherCode").value.trim();
+      const rooms = document.getElementById("rooms").value.trim();
+      const btn = document.getElementById("saveBtn");
 
-                showSuccess("บันทึกเรียบร้อยแล้ว<br>สร้างแท็บห้องเรียบร้อยแล้ว");
+      if (!profile || !profile.userId) {
+        showMessage("ไม่พบ LINE userId กรุณาเปิดผ่าน LINE", false);
+        return;
+      }
 
-            } catch (error) {
-                showError("เกิดข้อผิดพลาด: " + error.message);
-            } finally {
-                btn.disabled = false;
-                btn.innerText = "บันทึกข้อมูล";
-            }
+      if (!teacherName || !teacherCode || !rooms) {
+        showMessage("กรุณากรอกชื่อครู รหัสครู และห้องที่ดูแล", false);
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = "กำลังบันทึก...";
+
+      try {
+        const res = await fetch("/api/teacher/setup", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            teacher_line_user_id: profile.userId,
+            teacher_name: teacherName,
+            teacher_code: teacherCode,
+            rooms: rooms
+          })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          showMessage(data.message || "บันทึกเรียบร้อยแล้ว", true);
+        } else {
+          showMessage(data.message || "บันทึกไม่สำเร็จ", false);
         }
 
-        function showSuccess(msg) {
-            const box = document.getElementById("statusBox");
-            box.className = "status success";
-            box.innerHTML = msg;
-        }
+      } catch (err) {
+        showMessage("เกิดข้อผิดพลาด: " + err.message, false);
+      }
 
-        function showError(msg) {
-            const box = document.getElementById("statusBox");
-            box.className = "status error";
-            box.innerHTML = msg;
-        }
+      btn.disabled = false;
+      btn.textContent = "บันทึก";
+    }
 
-        main();
-    </script>
+    main();
+  </script>
 </body>
 </html>

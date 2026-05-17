@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ลงทะเบียนนักเรียน</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, "Tahoma", sans-serif;
+            background: #f4f7fb;
+            margin: 0;
+            padding: 16px;
+            color: #222;
+        }
+
+        .container {
+            max-width: 560px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 18px;
+            padding: 22px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        }
+
+        h1 {
+            text-align: center;
+            color: #1f5eff;
+            font-size: 24px;
+            margin: 0 0 8px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 18px;
+        }
+
+        .hint {
+            background: #eef4ff;
+            border: 1px solid #c8d9ff;
+            color: #2450a4;
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            margin-top: 14px;
+            margin-bottom: 6px;
+            font-weight: bold;
+            font-size: 15px;
+        }
+
+        input {
+            width: 100%;
+            padding: 13px 14px;
+            border: 1px solid #d6dbe6;
+            border-radius: 12px;
+            font-size: 16px;
+            background: #fbfcff;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: #1f5eff;
+            background: #ffffff;
+        }
+
+        .small {
+            font-size: 13px;
+            color: #777;
+            margin-top: 5px;
+            line-height: 1.5;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 22px;
+            padding: 14px;
+            border: none;
+            border-radius: 14px;
+            background: #1f5eff;
+            color: #fff;
+            font-size: 17px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            background: #9aa9d6;
+            cursor: not-allowed;
+        }
+
+        .message {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 12px;
+            display: none;
+            font-size: 15px;
+            line-height: 1.5;
+            white-space: pre-line;
+        }
+
+        .success {
+            background: #e8f8ee;
+            color: #137333;
+            border: 1px solid #bde8ca;
+        }
+
+        .error {
+            background: #fdeaea;
+            color: #b3261e;
+            border: 1px solid #f4b4b4;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>ลงทะเบียนนักเรียน</h1>
+
+    <div class="subtitle">
+        ใช้สำหรับลงทะเบียนครั้งแรก เพื่อให้ระบบรู้ว่านักเรียนอยู่ห้องไหน
+    </div>
+
+    <div class="hint">
+        <b>ตัวอย่างการกรอก</b><br>
+        ชื่อ-สกุล: เด็กชายสมชาย ใจดี<br>
+        เลขที่ : 12<br>
+        ห้องเรียน: 401
+    </div>
+
+    <label for="fullName">ชื่อ-สกุล</label>
+    <input
+        type="text"
+        id="fullName"
+        placeholder="ตัวอย่าง: เด็กชายสมชาย ใจดี"
+    >
+
+    <label for="studentCode">เลขที่ / รหัสนักเรียน</label>
+    <input
+        type="text"
+        id="studentCode"
+        placeholder="ตัวอย่าง: 12"
+    >
+
+    <label for="classroom">ห้องเรียน</label>
+    <input
+        type="text"
+        id="classroom"
+        placeholder="ตัวอย่าง: 401"
+    >
+    <div class="small">ตัวอย่าง: 401</div>
+
+    <button id="saveBtn" onclick="registerStudent()">
+        บันทึกการลงทะเบียน
+    </button>
+
+    <div id="messageBox" class="message"></div>
+</div>
+
+<script>
+    const LIFF_ID = "{{ liff_id }}";
+    let lineUserId = "";
+
+    async function main() {
+        try {
+            await liff.init({ liffId: LIFF_ID });
+
+            if (!liff.isLoggedIn()) {
+                liff.login();
+                return;
+            }
+
+            const profile = await liff.getProfile();
+            lineUserId = profile.userId;
+
+        } catch (error) {
+            showMessage("เปิด LIFF ไม่สำเร็จ: " + error.message, "error");
+        }
+    }
+
+    function showMessage(text, type) {
+        const box = document.getElementById("messageBox");
+        box.innerText = text;
+        box.className = "message " + type;
+        box.style.display = "block";
+    }
+
+    async function registerStudent() {
+        const fullName = document.getElementById("fullName").value.trim();
+        const studentCode = document.getElementById("studentCode").value.trim();
+        const classroom = document.getElementById("classroom").value.trim();
+        const btn = document.getElementById("saveBtn");
+
+        if (!lineUserId) {
+            showMessage("ไม่พบ LINE userId กรุณาปิดแล้วเปิดใหม่", "error");
+            return;
+        }
+
+        if (!fullName) {
+            showMessage("กรุณากรอกชื่อ-สกุล", "error");
+            return;
+        }
+
+        if (!studentCode) {
+            showMessage("กรุณากรอกเลขที่ ", "error");
+            return;
+        }
+
+        if (!classroom) {
+            showMessage("กรุณากรอกห้องเรียน", "error");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "กำลังบันทึก...";
+
+        try {
+            const res = await fetch("/api/student/register", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    line_user_id: lineUserId,
+                    full_name: fullName,
+                    student_code: studentCode,
+                    classroom: classroom
+                })
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                showMessage(
+                    "ลงทะเบียนเรียบร้อยแล้ว\nระบบเปลี่ยนเมนูหลักให้อัตโนมัติแล้ว",
+                    "success"
+                );
+
+                btn.innerText = "ลงทะเบียนสำเร็จ";
+
+                setTimeout(() => {
+                    if (liff.isInClient()) {
+                        liff.closeWindow();
+                    }
+                }, 1500);
+
+            } else {
+                showMessage(
+                    data.message || "ลงทะเบียนไม่สำเร็จ",
+                    "error"
+                );
+
+                btn.disabled = false;
+                btn.innerText = "บันทึกการลงทะเบียน";
+            }
+
+        } catch (error) {
+            showMessage(
+                "เกิดข้อผิดพลาด: " + error.message,
+                "error"
+            );
+
+            btn.disabled = false;
+            btn.innerText = "บันทึกการลงทะเบียน";
+        }
+    }
+
+    main();
+</script>
+
+</body>
+</html>

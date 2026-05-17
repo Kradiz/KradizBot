@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ส่งงาน</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: Arial, "Tahoma", sans-serif;
+            background: #f4f7fb;
+            margin: 0;
+            padding: 16px;
+            color: #222;
+        }
+
+        .container {
+            max-width: 560px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 18px;
+            padding: 22px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        }
+
+        h1 {
+            font-size: 24px;
+            margin: 0 0 8px;
+            text-align: center;
+            color: #1f5eff;
+        }
+
+        .subtitle {
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 18px;
+            line-height: 1.5;
+        }
+
+        .hint {
+            background: #eef4ff;
+            color: #2450a4;
+            border: 1px solid #c8d9ff;
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            margin-top: 14px;
+            margin-bottom: 6px;
+            font-weight: bold;
+            font-size: 15px;
+        }
+
+        select,
+        textarea,
+        input[type="file"] {
+            width: 100%;
+            padding: 13px 14px;
+            border: 1px solid #d6dbe6;
+            border-radius: 12px;
+            font-size: 16px;
+            outline: none;
+            background: #fbfcff;
+        }
+
+        textarea {
+            min-height: 110px;
+            resize: vertical;
+            line-height: 1.5;
+        }
+
+        select:focus,
+        textarea:focus {
+            border-color: #1f5eff;
+            background: #ffffff;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 22px;
+            padding: 14px;
+            border: none;
+            border-radius: 14px;
+            background: #1f5eff;
+            color: #ffffff;
+            font-size: 17px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            background: #9aa9d6;
+            cursor: not-allowed;
+        }
+
+        .message {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 12px;
+            display: none;
+            font-size: 15px;
+            line-height: 1.5;
+            white-space: pre-line;
+        }
+
+        .success {
+            background: #e8f8ee;
+            color: #137333;
+            border: 1px solid #bde8ca;
+        }
+
+        .error {
+            background: #fdeaea;
+            color: #b3261e;
+            border: 1px solid #f4b4b4;
+        }
+
+        .info {
+            background: #eef4ff;
+            color: #2450a4;
+            border: 1px solid #c8d9ff;
+        }
+
+        .assignment-info {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 12px;
+            background: #f6f8ff;
+            font-size: 14px;
+            color: #444;
+            line-height: 1.6;
+            display: none;
+            white-space: pre-line;
+        }
+
+        .small {
+            font-size: 13px;
+            color: #777;
+            margin-top: 6px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>ส่งงาน</h1>
+    <div class="subtitle">
+        เลือกงาน แนบไฟล์ แล้วกดส่ง ระบบจะอัปโหลดไฟล์เข้า Google Drive ให้อัตโนมัติ
+    </div>
+
+    <div class="hint">
+        <b>ตัวอย่างการส่งที่ถูกต้อง</b><br>
+        เลือกงาน: ใบงานที่ 1 เรื่องแรงและการเคลื่อนที่<br>
+        ไฟล์งาน: รูปถ่ายสมุด / PDF / Word<br>
+        หมายเหตุ: ส่งงานแล้วครับ หน้า 1-2<br><br>
+        <b>แนะนำ:</b> ใช้ไฟล์ไม่เกิน 20 MB
+    </div>
+
+    <label for="assignmentSelect">เลือกงาน</label>
+    <select id="assignmentSelect" onchange="showAssignmentInfo()">
+        <option value="">กำลังโหลดรายการงาน...</option>
+    </select>
+
+    <div id="assignmentInfo" class="assignment-info"></div>
+
+    <label for="fileInput">แนบไฟล์งาน</label>
+    <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx">
+    <div class="small">
+        รองรับไฟล์รูปภาพ, PDF, Word, Excel, PowerPoint<br>
+        ตัวอย่างชื่อไฟล์ที่ดี: 12_สมชาย_ใบงาน1.pdf
+    </div>
+
+    <label for="note">หมายเหตุเพิ่มเติม</label>
+    <textarea id="note" placeholder="ตัวอย่าง: ส่งงานแล้วครับ เป็นไฟล์ PDF หน้า 1-2"></textarea>
+
+    <button id="submitBtn" onclick="submitWork()">ส่งงาน</button>
+
+    <div id="messageBox" class="message"></div>
+</div>
+
+<script>
+    const LIFF_ID = "{{ liff_id }}";
+    let lineUserId = "";
+    let assignments = [];
+
+    async function main() {
+        try {
+            await liff.init({ liffId: LIFF_ID });
+
+            if (!liff.isLoggedIn()) {
+                liff.login();
+                return;
+            }
+
+            const profile = await liff.getProfile();
+            lineUserId = profile.userId;
+
+            await loadAssignments();
+
+        } catch (error) {
+            showMessage("เปิด LIFF ไม่สำเร็จ: " + error.message, "error");
+        }
+    }
+
+    function showMessage(text, type) {
+        const box = document.getElementById("messageBox");
+        box.innerText = text;
+        box.className = "message " + type;
+        box.style.display = "block";
+    }
+
+    async function loadAssignments() {
+        const select = document.getElementById("assignmentSelect");
+
+        try {
+            const res = await fetch("/api/student/assignments?line_user_id=" + encodeURIComponent(lineUserId));
+            const data = await res.json();
+
+            select.innerHTML = "";
+
+            if (!data.success) {
+                select.innerHTML = `<option value="">${data.message || "โหลดงานไม่สำเร็จ"}</option>`;
+                showMessage(data.message || "โหลดงานไม่สำเร็จ", "error");
+                return;
+            }
+
+            assignments = data.assignments || [];
+
+            if (assignments.length === 0) {
+                select.innerHTML = `<option value="">ยังไม่มีงานที่ครูสั่ง</option>`;
+                showMessage("ยังไม่มีงานในห้องของคุณ", "info");
+                return;
+            }
+
+            select.innerHTML = `<option value="">-- เลือกงาน --</option>`;
+
+            assignments.forEach(item => {
+                const opt = document.createElement("option");
+                opt.value = item.assignment_id;
+                opt.textContent = item.title + (item.due_date ? " | ส่งภายใน " + item.due_date : "");
+                select.appendChild(opt);
+            });
+
+        } catch (error) {
+            select.innerHTML = `<option value="">โหลดงานไม่สำเร็จ</option>`;
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+        }
+    }
+
+    function showAssignmentInfo() {
+        const assignmentId = document.getElementById("assignmentSelect").value;
+        const box = document.getElementById("assignmentInfo");
+
+        const item = assignments.find(a => String(a.assignment_id) === String(assignmentId));
+
+        if (!item) {
+            box.style.display = "none";
+            box.innerText = "";
+            return;
+        }
+
+        box.style.display = "block";
+        box.innerText =
+            "ชื่องาน: " + (item.title || "-") + "\n" +
+            "รายละเอียด: " + (item.description || "-") + "\n" +
+            "วันเริ่มส่ง: " + (item.start_date || "-") + "\n" +
+            "วันสิ้นสุด: " + (item.due_date || "-") + "\n" +
+            "คะแนนเต็ม: " + (item.max_score || "-");
+    }
+
+    async function submitWork() {
+        const assignmentId = document.getElementById("assignmentSelect").value;
+        const note = document.getElementById("note").value.trim();
+        const fileInput = document.getElementById("fileInput");
+        const btn = document.getElementById("submitBtn");
+
+        if (!lineUserId) {
+            showMessage("ยังไม่พบ LINE userId กรุณาปิดแล้วเปิดหน้านี้ใหม่", "error");
+            return;
+        }
+
+        if (!assignmentId) {
+            showMessage("กรุณาเลือกงาน", "error");
+            return;
+        }
+
+        if (!fileInput.files || fileInput.files.length === 0) {
+            showMessage("กรุณาแนบไฟล์งานก่อนส่ง", "error");
+            return;
+        }
+
+        const file = fileInput.files[0];
+
+        const maxSizeMB = 20;
+        if (file.size > maxSizeMB * 1024 * 1024) {
+            showMessage("ไฟล์ใหญ่เกินไป กรุณาใช้ไฟล์ไม่เกิน " + maxSizeMB + " MB", "error");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "กำลังอัปโหลดไฟล์...";
+
+        try {
+            const formData = new FormData();
+            formData.append("line_user_id", lineUserId);
+            formData.append("assignment_id", assignmentId);
+            formData.append("note", note);
+            formData.append("file", file);
+
+            const res = await fetch("/api/student/submit", {
+                method: "POST",
+                body: formData
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                showMessage("ส่งงานเรียบร้อยแล้ว\nระบบบันทึกลิงก์ไฟล์ลงชีตให้แล้ว", "success");
+                btn.innerText = "ส่งงานสำเร็จ";
+
+                setTimeout(() => {
+                    if (liff.isInClient()) {
+                        liff.closeWindow();
+                    }
+                }, 1500);
+
+            } else {
+                showMessage(data.message || "ส่งงานไม่สำเร็จ", "error");
+                btn.disabled = false;
+                btn.innerText = "ส่งงาน";
+            }
+
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+            btn.disabled = false;
+            btn.innerText = "ส่งงาน";
+        }
+    }
+
+    main();
+</script>
+
+</body>
+</html>

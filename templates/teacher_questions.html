@@ -4,119 +4,262 @@
     <meta charset="UTF-8">
     <title>คำถามนักเรียน</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
     <style>
-        * { box-sizing: border-box; font-family: Arial, sans-serif; }
-        body { margin: 0; padding: 16px; background: #f5f7fb; color: #222; }
-        .container { max-width: 520px; margin: 0 auto; background: white; border-radius: 18px; padding: 20px; box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
-        h1 { font-size: 22px; margin: 0 0 16px; text-align: center; }
-        .question { padding: 14px; border: 1px solid #ddd; border-radius: 14px; margin-bottom: 14px; background: #fafafa; }
-        .meta { font-size: 13px; color: #666; margin-bottom: 8px; line-height: 1.5; }
-        .text { font-size: 15px; margin-bottom: 10px; line-height: 1.5; }
-        textarea { width: 100%; min-height: 80px; padding: 10px; border: 1px solid #d0d7de; border-radius: 12px; font-size: 15px; }
-        button { width: 100%; margin-top: 10px; padding: 12px; background: #06c755; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; }
-        .empty { padding: 14px; background: #e8f8ee; color: #087a34; border-radius: 12px; }
-        .error { padding: 14px; background: #fff0f0; color: #b00020; border-radius: 12px; }
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: Arial, "Tahoma", sans-serif;
+            background: #f4f7fb;
+            margin: 0;
+            padding: 16px;
+            color: #222;
+        }
+
+        .container {
+            max-width: 560px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 18px;
+            padding: 22px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        }
+
+        h1 {
+            text-align: center;
+            color: #1f5eff;
+            font-size: 24px;
+            margin: 0 0 8px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 18px;
+        }
+
+        .hint {
+            background: #eef4ff;
+            border: 1px solid #c8d9ff;
+            color: #2450a4;
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 16px;
+        }
+
+        .card {
+            border: 1px solid #d6dbe6;
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 12px;
+            background: #fbfcff;
+        }
+
+        .meta {
+            font-size: 13px;
+            color: #666;
+            line-height: 1.5;
+            margin-bottom: 8px;
+        }
+
+        .question {
+            font-size: 15px;
+            line-height: 1.6;
+            margin-bottom: 10px;
+            white-space: pre-line;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 90px;
+            padding: 12px;
+            border: 1px solid #d6dbe6;
+            border-radius: 12px;
+            font-size: 15px;
+            resize: vertical;
+            outline: none;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 10px;
+            padding: 12px;
+            border: none;
+            border-radius: 12px;
+            background: #1f5eff;
+            color: #fff;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .message {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 15px;
+            line-height: 1.5;
+            white-space: pre-line;
+        }
+
+        .success {
+            background: #e8f8ee;
+            color: #137333;
+            border: 1px solid #bde8ca;
+        }
+
+        .error {
+            background: #fdeaea;
+            color: #b3261e;
+            border: 1px solid #f4b4b4;
+        }
+
+        .info {
+            background: #eef4ff;
+            color: #2450a4;
+            border: 1px solid #c8d9ff;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>คำถามที่ยังไม่ได้ตอบ</h1>
-        <div id="questionBox">กำลังโหลด...</div>
+
+<div class="container">
+    <h1>คำถามนักเรียน</h1>
+    <div class="subtitle">
+        แสดงคำถามที่ยังไม่ได้ตอบจากห้องที่ครูดูแล
     </div>
 
-    <script>
-        const LIFF_ID = "{{ liff_id }}";
-        let lineUserId = "";
+    <div class="hint">
+        <b>ตัวอย่างการตอบ</b><br>
+        คำตอบ: ส่งได้ถึงวันที่ 20 พฤษภาคม เวลา 23:59 น.<br>
+        หรือ: ส่งเป็นรูปถ่ายสมุดได้ แต่ต้องเห็นชัดเจน
+    </div>
 
-        async function main() {
-            try {
-                await liff.init({ liffId: LIFF_ID });
+    <div id="list"></div>
+    <div id="messageBox" class="message info">กำลังโหลดคำถาม...</div>
+</div>
 
-                if (!liff.isLoggedIn()) {
-                    liff.login();
-                    return;
-                }
+<script>
+    const LIFF_ID = "{{ liff_id }}";
+    let teacherLineUserId = "";
 
-                const profile = await liff.getProfile();
-                lineUserId = profile.userId;
+    async function main() {
+        try {
+            await liff.init({ liffId: LIFF_ID });
 
-                await loadQuestions();
-
-            } catch (error) {
-                showError("เปิด LIFF ไม่สำเร็จ: " + error.message);
+            if (!liff.isLoggedIn()) {
+                liff.login();
+                return;
             }
+
+            const profile = await liff.getProfile();
+            teacherLineUserId = profile.userId;
+
+            await loadQuestions();
+
+        } catch (error) {
+            showMessage("เปิด LIFF ไม่สำเร็จ: " + error.message, "error");
         }
+    }
 
-        async function loadQuestions() {
-            const res = await fetch("/api/teacher/questions?teacher_line_user_id=" + encodeURIComponent(lineUserId));
-            const result = await res.json();
+    function showMessage(text, type) {
+        const box = document.getElementById("messageBox");
+        box.innerText = text;
+        box.className = "message " + type;
+        box.style.display = "block";
+    }
 
-            const box = document.getElementById("questionBox");
-            box.innerHTML = "";
+    async function loadQuestions() {
+        const list = document.getElementById("list");
 
-            if (!result.success) {
-                showError(result.message || "โหลดข้อมูลไม่สำเร็จ");
+        try {
+            const res = await fetch("/api/teacher/questions?teacher_line_user_id=" + encodeURIComponent(teacherLineUserId));
+            const data = await res.json();
+
+            list.innerHTML = "";
+
+            if (!data.success) {
+                showMessage(data.message || "โหลดคำถามไม่สำเร็จ", "error");
                 return;
             }
 
-            if (result.questions.length === 0) {
-                box.innerHTML = '<div class="empty">ยังไม่มีคำถามค้าง</div>';
+            const questions = data.questions || [];
+
+            if (questions.length === 0) {
+                showMessage("ยังไม่มีคำถามที่รอตอบ", "success");
                 return;
             }
 
-            result.questions.forEach(q => {
+            document.getElementById("messageBox").style.display = "none";
+
+            questions.forEach(q => {
                 const div = document.createElement("div");
-                div.className = "question";
+                div.className = "card";
+                div.id = "card-" + q.question_id;
+
                 div.innerHTML = `
                     <div class="meta">
-                        ห้อง: ${q.classroom}<br>
-                        นักเรียน: ${q.student_name}<br>
-                        เวลา: ${q.created_at}
+                        ห้อง ${q.classroom || "-"}<br>
+                        นักเรียน: ${q.student_name || "-"}<br>
+                        เวลา: ${q.created_at || "-"}
                     </div>
-                    <div class="text">คำถาม: ${q.question_text}</div>
-                    <textarea id="answer_${q.question_id}" placeholder="พิมพ์คำตอบ"></textarea>
+                    <div class="question">${q.question_text || ""}</div>
+                    <textarea id="answer-${q.question_id}" placeholder="ตัวอย่าง: ส่งได้ถึงวันที่ 20 พฤษภาคม เวลา 23:59 น."></textarea>
                     <button onclick="answerQuestion('${q.question_id}')">ส่งคำตอบ</button>
                 `;
-                box.appendChild(div);
+
+                list.appendChild(div);
             });
+
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+        }
+    }
+
+    async function answerQuestion(questionId) {
+        const answerText = document.getElementById("answer-" + questionId).value.trim();
+
+        if (!answerText) {
+            showMessage("กรุณากรอกคำตอบ", "error");
+            return;
         }
 
-        async function answerQuestion(questionId) {
-            const answerText = document.getElementById("answer_" + questionId).value.trim();
-
-            if (!answerText) {
-                alert("กรุณากรอกคำตอบ");
-                return;
-            }
-
+        try {
             const res = await fetch("/api/teacher/questions/answer", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({
                     question_id: questionId,
                     answer_text: answerText,
-                    teacher_line_user_id: lineUserId
+                    teacher_line_user_id: teacherLineUserId
                 })
             });
 
-            const result = await res.json();
+            const data = await res.json();
 
-            if (!res.ok || !result.success) {
-                alert(result.message || "ตอบคำถามไม่สำเร็จ");
-                return;
+            if (data.success) {
+                const card = document.getElementById("card-" + questionId);
+                if (card) {
+                    card.remove();
+                }
+                showMessage("ตอบคำถามเรียบร้อยแล้ว", "success");
+            } else {
+                showMessage(data.message || "ตอบคำถามไม่สำเร็จ", "error");
             }
 
-            alert("ตอบคำถามเรียบร้อยแล้ว");
-            await loadQuestions();
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
         }
+    }
 
-        function showError(msg) {
-            document.getElementById("questionBox").innerHTML = '<div class="error">' + msg + '</div>';
-        }
+    main();
+</script>
 
-        main();
-    </script>
 </body>
 </html>

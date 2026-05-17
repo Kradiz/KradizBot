@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>งานค้างของฉัน</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: Arial, "Tahoma", sans-serif;
+            background: #f4f7fb;
+            margin: 0;
+            padding: 16px;
+            color: #222;
+        }
+
+        .container {
+            max-width: 560px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 18px;
+            padding: 22px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        }
+
+        h1 {
+            text-align: center;
+            color: #1f5eff;
+            font-size: 24px;
+            margin: 0 0 8px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 18px;
+        }
+
+        .hint {
+            background: #eef4ff;
+            border: 1px solid #c8d9ff;
+            color: #2450a4;
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 16px;
+        }
+
+        .card {
+            border: 1px solid #d6dbe6;
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 12px;
+            background: #fbfcff;
+        }
+
+        .title {
+            font-weight: bold;
+            font-size: 16px;
+            color: #222;
+            margin-bottom: 6px;
+        }
+
+        .meta {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.5;
+        }
+
+        .message {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 15px;
+            line-height: 1.5;
+            white-space: pre-line;
+        }
+
+        .success {
+            background: #e8f8ee;
+            color: #137333;
+            border: 1px solid #bde8ca;
+        }
+
+        .error {
+            background: #fdeaea;
+            color: #b3261e;
+            border: 1px solid #f4b4b4;
+        }
+
+        .info {
+            background: #eef4ff;
+            color: #2450a4;
+            border: 1px solid #c8d9ff;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>งานค้างของฉัน</h1>
+    <div class="subtitle">
+        ระบบจะแสดงเฉพาะงานที่ยังไม่พบการส่งงานของคุณ
+    </div>
+
+    <div class="hint">
+        <b>วิธีใช้</b><br>
+        ถ้ามีงานค้าง ให้กลับไปกดเมนู “ส่งงาน” แล้วเลือกงานที่ต้องการส่ง<br>
+        ถ้าส่งแล้วแต่ยังขึ้นค้าง อาจเกิดจากส่งผิดงานหรือใช้บัญชี LINE คนละบัญชี
+    </div>
+
+    <div id="list"></div>
+    <div id="messageBox" class="message info">กำลังโหลดข้อมูลงานค้าง...</div>
+</div>
+
+<script>
+    const LIFF_ID = "{{ liff_id }}";
+    let lineUserId = "";
+
+    async function main() {
+        try {
+            await liff.init({ liffId: LIFF_ID });
+
+            if (!liff.isLoggedIn()) {
+                liff.login();
+                return;
+            }
+
+            const profile = await liff.getProfile();
+            lineUserId = profile.userId;
+
+            await loadPending();
+
+        } catch (error) {
+            showMessage("เปิด LIFF ไม่สำเร็จ: " + error.message, "error");
+        }
+    }
+
+    function showMessage(text, type) {
+        const box = document.getElementById("messageBox");
+        box.innerText = text;
+        box.className = "message " + type;
+        box.style.display = "block";
+    }
+
+    async function loadPending() {
+        const list = document.getElementById("list");
+
+        try {
+            const res = await fetch("/api/student/pending?line_user_id=" + encodeURIComponent(lineUserId));
+            const data = await res.json();
+
+            list.innerHTML = "";
+
+            if (!data.success) {
+                showMessage(data.message || "โหลดข้อมูลไม่สำเร็จ", "error");
+                return;
+            }
+
+            const pending = data.pending || [];
+
+            if (pending.length === 0) {
+                showMessage("ไม่มีงานค้างตอนนี้", "success");
+                return;
+            }
+
+            document.getElementById("messageBox").style.display = "none";
+
+            pending.forEach(item => {
+                const div = document.createElement("div");
+                div.className = "card";
+                div.innerHTML = `
+                    <div class="title">${item.title || "-"}</div>
+                    <div class="meta">
+                        ส่งภายใน: ${item.due_date || "-"}<br>
+                        คะแนนเต็ม: ${item.max_score || "-"}
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+        }
+    }
+
+    main();
+</script>
+
+</body>
+</html>
