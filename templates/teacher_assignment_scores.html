@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>กรอกคะแนน</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: Arial, "Tahoma", sans-serif;
+            background: #eef2f7;
+            margin: 0;
+            padding: 16px;
+            color: #222;
+        }
+        .container {
+            max-width: 640px;
+            margin: 0 auto;
+            background: #ffffff;
+            border: 1px solid #dbe3ee;
+            border-radius: 8px;
+            padding: 22px;
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+        }
+        h1 {
+            text-align: center;
+            color: #1554d1;
+            font-size: 24px;
+            margin: 0 0 8px;
+        }
+        .subtitle, .assignment-info {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 16px;
+        }
+        .assignment-info {
+            background: #eef4ff;
+            border: 1px solid #c8d9ff;
+            color: #2450a4;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: left;
+        }
+        .assignment-info b { color: #1554d1; }
+        button {
+            width: 100%;
+            margin-top: 18px;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            background: #1554d1;
+            color: #fff;
+            font-size: 17px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        button.secondary {
+            background: #0f766e;
+        }
+        button:disabled {
+            background: #9aa9d6;
+            cursor: not-allowed;
+        }
+        .score-table-wrap {
+            margin-top: 16px;
+            overflow-x: auto;
+            border: 1px solid #dbe3ee;
+            border-radius: 8px;
+            background: #ffffff;
+        }
+        .score-table {
+            width: 100%;
+            min-width: 520px;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        .score-table th {
+            background: #1f2937;
+            color: #ffffff;
+            padding: 12px 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .score-table th:nth-child(2) { text-align: left; }
+        .score-table td {
+            border-top: 1px solid #e5e7eb;
+            padding: 9px 8px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        .score-table td:nth-child(2) {
+            text-align: left;
+            font-weight: bold;
+            color: #374151;
+            min-width: 150px;
+        }
+        .score-table tr:nth-child(even) td { background: #f8fafc; }
+        .score-input, .comment-input {
+            padding: 8px;
+            border: 1px solid #d6dbe6;
+            border-radius: 8px;
+            font-size: 14px;
+            background: #fbfcff;
+            outline: none;
+        }
+        .score-input {
+            width: 72px;
+            min-width: 72px;
+            text-align: center;
+        }
+        .comment-input {
+            width: 120px;
+            min-width: 120px;
+        }
+        .score-input:focus, .comment-input:focus {
+            border-color: #1554d1;
+            background: #ffffff;
+        }
+        .empty-state {
+            margin-top: 14px;
+            padding: 14px;
+            border: 1px dashed #cbd5e1;
+            border-radius: 8px;
+            color: #64748b;
+            text-align: center;
+            line-height: 1.5;
+        }
+        .message {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 8px;
+            display: none;
+            font-size: 15px;
+            line-height: 1.5;
+            white-space: pre-line;
+        }
+        .success { background: #e8f8ee; color: #137333; border: 1px solid #bde8ca; }
+        .error { background: #fdeaea; color: #b3261e; border: 1px solid #f4b4b4; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>กรอกคะแนน</h1>
+    <div class="subtitle">กรอกคะแนนนักเรียนในห้องที่เลือก</div>
+    <div id="assignmentInfo" class="assignment-info" hidden></div>
+    <div id="scoreList"></div>
+    <button type="button" id="saveBtn" onclick="saveScores()" hidden>บันทึกคะแนน</button>
+    <button type="button" class="secondary" id="backBtn" onclick="goBack()">กลับไปสั่งงาน</button>
+    <div id="messageBox" class="message"></div>
+</div>
+
+<script>
+    const RAW_LIFF_ID = "{{ liff_id }}";
+    const LIFF_ID = String(RAW_LIFF_ID || "").trim().replace("https://liff.line.me/", "");
+    const params = new URLSearchParams(window.location.search);
+    const classroom = params.get("classroom") || "";
+    const assignmentId = params.get("assignment_id") || "";
+    let teacherLineUserId = "";
+    let assignmentData = null;
+
+    async function main() {
+        try {
+            await liff.init({ liffId: LIFF_ID });
+            if (!liff.isLoggedIn()) {
+                liff.login();
+                return;
+            }
+            const profile = await liff.getProfile();
+            teacherLineUserId = profile.userId;
+
+            if (!classroom || !assignmentId) {
+                showMessage("ไม่พบข้อมูลห้องหรือรหัสงาน กรุณากลับไปสั่งงานใหม่", "error");
+                return;
+            }
+
+            await loadScores();
+        } catch (error) {
+            showMessage("เปิด LIFF ไม่สำเร็จ: " + error.message, "error");
+        }
+    }
+
+    function showMessage(text, type) {
+        const box = document.getElementById("messageBox");
+        box.innerText = text;
+        box.className = "message " + type;
+        box.style.display = "block";
+    }
+
+    function goBack() {
+        window.location.href = "/teacher-assignment";
+    }
+
+    function renderAssignmentInfo(assignment) {
+        const box = document.getElementById("assignmentInfo");
+        box.hidden = false;
+        box.innerHTML =
+            `<b>ห้อง:</b> ${classroom}<br>` +
+            `<b>บท:</b> ${assignment.chapter_name || "-"}<br>` +
+            `<b>งาน:</b> ${assignment.title || "-"}<br>` +
+            `<b>ประเภท:</b> ${assignment.score_category_label || "-"}<br>` +
+            `<b>คะแนนเต็ม:</b> ${assignment.max_score || "-"}`;
+    }
+
+    function renderStudents(students) {
+        const list = document.getElementById("scoreList");
+        const saveBtn = document.getElementById("saveBtn");
+        list.innerHTML = "";
+        saveBtn.hidden = true;
+
+        if (!students.length) {
+            const empty = document.createElement("div");
+            empty.className = "empty-state";
+            empty.textContent = "ยังไม่มีนักเรียนลงทะเบียนในห้องนี้";
+            list.appendChild(empty);
+            return;
+        }
+
+        const wrap = document.createElement("div");
+        wrap.className = "score-table-wrap";
+        const table = document.createElement("table");
+        table.className = "score-table";
+
+        const thead = document.createElement("thead");
+        const headRow = document.createElement("tr");
+        const maxScore = assignmentData ? assignmentData.max_score : "";
+        ["ที่", "ชื่อ-นามสกุล", maxScore ? `คะแนน / ${maxScore}` : "คะแนน", "หมายเหตุ"].forEach(text => {
+            const th = document.createElement("th");
+            th.textContent = text;
+            headRow.appendChild(th);
+        });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement("tbody");
+        students.forEach((student, index) => {
+            const row = document.createElement("tr");
+            row.className = "score-row";
+            row.dataset.studentId = student.student_line_user_id || "";
+            row.dataset.studentName = student.student_name || "";
+            row.dataset.studentCode = student.student_code || "";
+
+            const numberCell = document.createElement("td");
+            numberCell.textContent = student.student_code || String(index + 1);
+            row.appendChild(numberCell);
+
+            const nameCell = document.createElement("td");
+            nameCell.textContent = student.student_name || "ไม่ระบุชื่อ";
+            row.appendChild(nameCell);
+
+            const scoreCell = document.createElement("td");
+            const scoreInput = document.createElement("input");
+            scoreInput.type = "number";
+            scoreInput.min = "0";
+            scoreInput.step = "0.01";
+            scoreInput.inputMode = "decimal";
+            scoreInput.className = "score-input student-score";
+            if (maxScore) {
+                scoreInput.max = maxScore;
+            }
+            scoreInput.value = student.score || "";
+            scoreCell.appendChild(scoreInput);
+            row.appendChild(scoreCell);
+
+            const commentCell = document.createElement("td");
+            const commentInput = document.createElement("input");
+            commentInput.type = "text";
+            commentInput.className = "comment-input teacher-comment";
+            commentInput.placeholder = "หมายเหตุ";
+            commentInput.value = student.teacher_comment || "";
+            commentCell.appendChild(commentInput);
+            row.appendChild(commentCell);
+
+            tbody.appendChild(row);
+        });
+
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+        list.appendChild(wrap);
+        saveBtn.hidden = false;
+    }
+
+    async function loadScores() {
+        const saveBtn = document.getElementById("saveBtn");
+        saveBtn.disabled = true;
+        saveBtn.innerText = "กำลังโหลด...";
+
+        try {
+            const query = new URLSearchParams({
+                teacher_line_user_id: teacherLineUserId,
+                classroom: classroom,
+                assignment_id: assignmentId
+            });
+            const res = await fetch("/api/teacher/assignment-scores?" + query.toString());
+            const data = await res.json();
+
+            if (!data.success) {
+                showMessage(data.message || "โหลดรายชื่อไม่สำเร็จ", "error");
+                return;
+            }
+
+            assignmentData = data.assignment || {};
+            renderAssignmentInfo(assignmentData);
+            renderStudents(data.students || []);
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.innerText = "บันทึกคะแนน";
+        }
+    }
+
+    async function saveScores() {
+        const btn = document.getElementById("saveBtn");
+        const rows = Array.from(document.querySelectorAll(".score-row"));
+        const students = [];
+        const maxScoreValue = assignmentData ? Number(assignmentData.max_score) : null;
+
+        for (const row of rows) {
+            const scoreInput = row.querySelector(".student-score");
+            const commentInput = row.querySelector(".teacher-comment");
+            const score = scoreInput ? scoreInput.value.trim() : "";
+            const teacherComment = commentInput ? commentInput.value.trim() : "";
+
+            if (score === "" && teacherComment === "") {
+                continue;
+            }
+
+            if (score !== "") {
+                const scoreValue = Number(score);
+                if (!Number.isFinite(scoreValue) || scoreValue < 0) {
+                    showMessage("คะแนนต้องเป็นตัวเลขที่ไม่ติดลบ", "error");
+                    return;
+                }
+                if (Number.isFinite(maxScoreValue) && maxScoreValue > 0 && scoreValue > maxScoreValue) {
+                    showMessage(`คะแนนต้องไม่เกิน ${maxScoreValue}`, "error");
+                    return;
+                }
+            }
+
+            students.push({
+                student_line_user_id: row.dataset.studentId,
+                student_name: row.dataset.studentName,
+                student_code: row.dataset.studentCode,
+                score: score,
+                teacher_comment: teacherComment
+            });
+        }
+
+        if (!students.length) {
+            showMessage("ยังไม่มีคะแนนที่จะบันทึก", "error");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "กำลังบันทึก...";
+
+        try {
+            const res = await fetch("/api/teacher/assignment-scores", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    teacher_line_user_id: teacherLineUserId,
+                    classroom: classroom,
+                    assignment_id: assignmentId,
+                    students: students
+                })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                showMessage(data.message || "บันทึกคะแนนเรียบร้อยแล้ว", "success");
+                await loadScores();
+            } else {
+                showMessage(data.message || "บันทึกคะแนนไม่สำเร็จ", "error");
+            }
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "บันทึกคะแนน";
+        }
+    }
+
+    main();
+</script>
+</body>
+</html>

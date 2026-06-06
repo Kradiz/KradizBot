@@ -8,9 +8,13 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       font-family: Arial, sans-serif;
-      background: #f3f6fb;
+      background: #eef2f7;
       margin: 0;
       padding: 16px;
       color: #1f2937;
@@ -20,15 +24,16 @@
       max-width: 480px;
       margin: 0 auto;
       background: white;
-      border-radius: 16px;
+      border: 1px solid #dbe3ee;
+      border-radius: 8px;
       padding: 20px;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
     }
 
     h1 {
       font-size: 24px;
       text-align: center;
-      color: #2563eb;
+      color: #1554d1;
       margin-bottom: 8px;
     }
 
@@ -49,18 +54,34 @@
 
     input {
       width: 100%;
-      box-sizing: border-box;
       padding: 12px;
       border: 1px solid #d1d5db;
-      border-radius: 10px;
+      border-radius: 8px;
       font-size: 16px;
       background: #fff;
     }
 
     input:focus {
       outline: none;
-      border-color: #2563eb;
-      box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+      border-color: #1554d1;
+      box-shadow: 0 0 0 2px rgba(21,84,209,0.14);
+    }
+
+    .field-invalid {
+      border-color: #b3261e !important;
+      background: #fff8f7 !important;
+    }
+
+    .field-error {
+      display: none;
+      color: #b3261e;
+      font-size: 13px;
+      line-height: 1.4;
+      margin-top: 5px;
+    }
+
+    .field-error.show {
+      display: block;
     }
 
     .hint {
@@ -72,7 +93,7 @@
 
     .example {
       background: #eff6ff;
-      border-left: 4px solid #2563eb;
+      border-left: 4px solid #1554d1;
       padding: 10px;
       border-radius: 8px;
       margin-top: 14px;
@@ -97,8 +118,8 @@
       margin-top: 20px;
       padding: 14px;
       border: none;
-      border-radius: 12px;
-      background: #2563eb;
+      border-radius: 8px;
+      background: #1554d1;
       color: white;
       font-size: 17px;
       font-weight: bold;
@@ -113,7 +134,7 @@
     .message {
       margin-top: 16px;
       padding: 12px;
-      border-radius: 10px;
+      border-radius: 8px;
       display: none;
       font-size: 15px;
       line-height: 1.5;
@@ -137,7 +158,7 @@
       padding: 10px;
       background: #f9fafb;
       border: 1px solid #e5e7eb;
-      border-radius: 10px;
+      border-radius: 8px;
       font-size: 13px;
       color: #374151;
       word-break: break-all;
@@ -156,26 +177,30 @@
     <div id="profileBox" class="profile-box"></div>
 
     <label>ชื่อครู</label>
-    <input id="teacherName" type="text" placeholder="เช่น ครูสมชาย">
+    <input id="teacherName" type="text" maxlength="80" autocomplete="name" placeholder="เช่น ครูสมชาย">
+    <div id="teacherNameError" class="field-error"></div>
 
     <label>รหัสครู</label>
-    <input id="teacherCode" type="password" placeholder="กรอกรหัสครูที่ได้รับจากผู้ดูแล">
+    <input id="teacherCode" type="password" maxlength="80" autocomplete="off" placeholder="กรอกรหัสครูที่ได้รับจากผู้ดูแล">
+    <div id="teacherCodeError" class="field-error"></div>
     <div class="hint">
       ช่องนี้ใช้ป้องกันไม่ให้นักเรียนหรือบุคคลทั่วไปสมัครเป็นครู
     </div>
 
     <label>ห้องที่ดูแล</label>
-    <input id="rooms" type="text" placeholder="เช่น 401,402,403">
+    <input id="rooms" type="text" maxlength="120" placeholder="เช่น 401 402 หรือ 4/1 4/2">
+    <div id="roomsError" class="field-error"></div>
     <div class="hint">
-      ถ้ามีหลายห้อง ให้คั่นด้วย comma เช่น 401,402,403<br>
-      แนะนำให้ใช้รูปแบบห้องให้ตรงกันทุกที่ เช่น 401
+      ถ้ามีหลายห้อง ให้คั่นด้วยเว้นวรรค เช่น 401 402 หรือ 4/1 4/2<br>
+      ระบบจะบันทึกเป็นรูปแบบ 401 402 ให้อัตโนมัติ<br>
+      ถ้าเคยตั้งค่าแล้ว สามารถพิมพ์ห้องใหม่เพิ่มได้ ระบบจะรวมกับห้องเดิม
     </div>
 
     <div class="example">
       ตัวอย่างการกรอก:<br>
       ชื่อครู: ครูสมชาย<br>
       รหัสครู: TCH-401-2026<br>
-      ห้องที่ดูแล: 401,402
+      ห้องที่ดูแล: 401 402 หรือ 4/1 4/2
     </div>
 
     <div class="warning">
@@ -183,14 +208,17 @@
       ถ้ารหัสครูไม่ถูกต้อง ระบบจะไม่บันทึกข้อมูล และจะไม่ให้สิทธิ์เมนูครู
     </div>
 
-    <button id="saveBtn" onclick="saveTeacher()">บันทึก</button>
+    <button type="button" id="saveBtn" onclick="saveTeacher()">บันทึก</button>
 
     <div id="msg" class="message"></div>
   </div>
 
   <script>
     const RAW_LIFF_ID = "{{ liff_id }}";
-    const LIFF_ID = String(RAW_LIFF_ID || "").trim().replace("https://liff.line.me/", "");
+    const LIFF_ID = String(RAW_LIFF_ID || "")
+      .trim()
+      .replace("https://liff.line.me/", "")
+      .replace("http://liff.line.me/", "");
     let profile = null;
 
     async function main() {
@@ -210,8 +238,36 @@
           "LINE: " + escapeHtml(profile.displayName || "-") + "<br>" +
           "User ID: " + escapeHtml(profile.userId || "-");
 
+        await loadExistingTeacher();
+
       } catch (err) {
         showMessage("เปิด LIFF ไม่สำเร็จ: " + err.message, false);
+      }
+    }
+
+    async function loadExistingTeacher() {
+      try {
+        const res = await fetch(
+          "/api/teacher/my-rooms?teacher_line_user_id=" + encodeURIComponent(profile.userId)
+        );
+        const data = await res.json();
+
+        if (!data.success) {
+          return;
+        }
+
+        const teacher = data.teacher || {};
+        const rooms = data.rooms || [];
+
+        if (teacher.teacher_name) {
+          document.getElementById("teacherName").value = teacher.teacher_name;
+        }
+
+        if (rooms.length > 0) {
+          document.getElementById("rooms").value = rooms.join(" ");
+        }
+      } catch (err) {
+        console.log("load existing teacher failed", err);
       }
     }
 
@@ -231,19 +287,74 @@
       msg.className = "message " + (success ? "success" : "error");
     }
 
+    function setFieldError(fieldId, message) {
+      const field = document.getElementById(fieldId);
+      const error = document.getElementById(fieldId + "Error");
+      if (field) {
+        field.classList.add("field-invalid");
+      }
+      if (error) {
+        error.textContent = message;
+        error.classList.add("show");
+      }
+    }
+
+    function clearFieldError(fieldId) {
+      const field = document.getElementById(fieldId);
+      const error = document.getElementById(fieldId + "Error");
+      if (field) {
+        field.classList.remove("field-invalid");
+      }
+      if (error) {
+        error.textContent = "";
+        error.classList.remove("show");
+      }
+    }
+
+    function clearFormErrors() {
+      ["teacherName", "teacherCode", "rooms"].forEach(clearFieldError);
+    }
+
+    ["teacherName", "teacherCode", "rooms"].forEach(fieldId => {
+      const field = document.getElementById(fieldId);
+      if (field) {
+        field.addEventListener("input", () => clearFieldError(fieldId));
+      }
+    });
+
     async function saveTeacher() {
       const teacherName = document.getElementById("teacherName").value.trim();
       const teacherCode = document.getElementById("teacherCode").value.trim();
       const rooms = document.getElementById("rooms").value.trim();
       const btn = document.getElementById("saveBtn");
+      clearFormErrors();
 
       if (!profile || !profile.userId) {
         showMessage("ไม่พบ LINE userId กรุณาเปิดผ่าน LINE", false);
         return;
       }
 
-      if (!teacherName || !teacherCode || !rooms) {
+      let hasError = false;
+      if (!teacherName) {
+        setFieldError("teacherName", "กรุณากรอกชื่อครู");
+        hasError = true;
+      }
+      if (!teacherCode) {
+        setFieldError("teacherCode", "กรุณากรอกรหัสครู");
+        hasError = true;
+      }
+      if (!rooms) {
+        setFieldError("rooms", "กรุณากรอกห้องที่ดูแล");
+        hasError = true;
+      }
+      if (hasError) {
         showMessage("กรุณากรอกชื่อครู รหัสครู และห้องที่ดูแล", false);
+        return;
+      }
+
+      if (!/[1-6]\d{2}|[1-6]\s*[/.-]\s*\d{1,2}/.test(rooms)) {
+        setFieldError("rooms", "กรุณากรอกห้องให้ถูกต้อง เช่น 401 402 หรือ 4/1 4/2");
+        showMessage("กรุณากรอกห้องให้ถูกต้อง เช่น 401 402 หรือ 4/1 4/2", false);
         return;
       }
 
@@ -267,6 +378,9 @@
         const data = await res.json();
 
         if (data.success) {
+          if (Array.isArray(data.rooms)) {
+            document.getElementById("rooms").value = data.rooms.join(" ");
+          }
           showMessage(data.message || "บันทึกเรียบร้อยแล้ว", true);
         } else {
           showMessage(data.message || "บันทึกไม่สำเร็จ", false);

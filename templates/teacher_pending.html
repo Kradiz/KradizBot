@@ -12,7 +12,7 @@
 
         body {
             font-family: Arial, "Tahoma", sans-serif;
-            background: #f4f7fb;
+            background: #eef2f7;
             margin: 0;
             padding: 16px;
             color: #222;
@@ -22,14 +22,15 @@
             max-width: 560px;
             margin: 0 auto;
             background: #ffffff;
-            border-radius: 18px;
+            border: 1px solid #dbe3ee;
+            border-radius: 8px;
             padding: 22px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
         }
 
         h1 {
             text-align: center;
-            color: #1f5eff;
+            color: #1554d1;
             font-size: 23px;
             margin: 0 0 8px;
         }
@@ -46,7 +47,7 @@
             background: #eef4ff;
             border: 1px solid #c8d9ff;
             color: #2450a4;
-            border-radius: 12px;
+            border-radius: 8px;
             padding: 12px;
             font-size: 14px;
             line-height: 1.6;
@@ -65,7 +66,7 @@
             width: 100%;
             padding: 13px 14px;
             border: 1px solid #d6dbe6;
-            border-radius: 12px;
+            border-radius: 8px;
             font-size: 16px;
             background: #fbfcff;
             outline: none;
@@ -76,17 +77,22 @@
             margin-top: 18px;
             padding: 14px;
             border: none;
-            border-radius: 14px;
-            background: #1f5eff;
+            border-radius: 8px;
+            background: #1554d1;
             color: #fff;
             font-size: 17px;
             font-weight: bold;
             cursor: pointer;
         }
 
+        button:disabled {
+            background: #93a4c4;
+            cursor: not-allowed;
+        }
+
         .card {
             border: 1px solid #d6dbe6;
-            border-radius: 14px;
+            border-radius: 8px;
             padding: 12px;
             margin-top: 10px;
             background: #fbfcff;
@@ -94,10 +100,20 @@
             line-height: 1.5;
         }
 
+        .negative-card {
+            border-color: #f4b4b4;
+            background: #fff8f7;
+        }
+
+        .negative-text {
+            color: #b3261e;
+            font-weight: bold;
+        }
+
         .message {
             margin-top: 16px;
             padding: 12px;
-            border-radius: 12px;
+            border-radius: 8px;
             display: none;
             font-size: 15px;
             line-height: 1.5;
@@ -148,7 +164,7 @@
         <option value="">กรุณาเลือกห้องก่อน</option>
     </select>
 
-    <button onclick="loadPending()">ดูรายชื่อที่ยังไม่ส่ง</button>
+    <button type="button" id="loadBtn" onclick="loadPending()">ดูรายชื่อที่ยังไม่ส่ง</button>
 
     <div id="list"></div>
     <div id="messageBox" class="message"></div>
@@ -183,6 +199,10 @@
         box.innerText = text;
         box.className = "message " + type;
         box.style.display = "block";
+    }
+
+    function appendText(parent, text) {
+        parent.appendChild(document.createTextNode(text || "-"));
     }
 
     async function loadRooms() {
@@ -257,7 +277,7 @@
             assignments.forEach(item => {
                 const opt = document.createElement("option");
                 opt.value = item.assignment_id;
-                opt.textContent = item.title + (item.due_date ? " | " + item.due_date : "");
+                opt.textContent = item.title + (item.due_text ? " | " + item.due_text : (item.due_date ? " | " + item.due_date : ""));
                 select.appendChild(opt);
             });
 
@@ -270,6 +290,7 @@
         const classroom = document.getElementById("classroom").value;
         const assignmentId = document.getElementById("assignment").value;
         const list = document.getElementById("list");
+        const btn = document.getElementById("loadBtn");
 
         list.innerHTML = "";
         document.getElementById("messageBox").style.display = "none";
@@ -283,6 +304,9 @@
             showMessage("กรุณาเลือกงาน", "error");
             return;
         }
+
+        btn.disabled = true;
+        btn.innerText = "กำลังโหลด...";
 
         try {
             const url = "/api/teacher/pending?teacher_line_user_id=" + encodeURIComponent(teacherLineUserId) +
@@ -304,20 +328,25 @@
                 return;
             }
 
-            showMessage("พบ " + students.length + " คนที่ยังไม่ส่ง", "success");
+            showMessage("พบ " + students.length + " คนที่ยังไม่ส่ง", "error");
 
-            students.forEach((s, index) => {
+            students.forEach((s) => {
                 const div = document.createElement("div");
-                div.className = "card";
-                div.innerHTML = `
-                    ${index + 1}. ${s.student_name || "-"}<br>
-                    เลขที่ / รหัส: ${s.student_code || "-"}
-                `;
+                div.className = "card negative-card";
+
+                const name = document.createElement("div");
+                name.className = "negative-text";
+                appendText(name, (s.student_code || "-") + ". " + (s.student_name || "-"));
+
+                div.appendChild(name);
                 list.appendChild(div);
             });
 
         } catch (error) {
             showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "ดูรายชื่อที่ยังไม่ส่ง";
         }
     }
 

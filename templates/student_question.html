@@ -12,7 +12,7 @@
 
         body {
             font-family: Arial, "Tahoma", sans-serif;
-            background: #f4f7fb;
+            background: #eef2f7;
             margin: 0;
             padding: 16px;
             color: #222;
@@ -22,14 +22,15 @@
             max-width: 560px;
             margin: 0 auto;
             background: #ffffff;
-            border-radius: 18px;
+            border: 1px solid #dbe3ee;
+            border-radius: 8px;
             padding: 22px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
         }
 
         h1 {
             text-align: center;
-            color: #1f5eff;
+            color: #1554d1;
             font-size: 24px;
             margin: 0 0 8px;
         }
@@ -46,10 +47,134 @@
             background: #eef4ff;
             border: 1px solid #c8d9ff;
             color: #2450a4;
-            border-radius: 12px;
+            border-radius: 8px;
             padding: 12px;
             font-size: 14px;
             line-height: 1.6;
+            margin-bottom: 16px;
+        }
+
+        .tab-bar {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px;
+            margin: 16px 0;
+            padding: 4px;
+            border: 1px solid #dbe3ee;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+
+        .tab-button {
+            width: 100%;
+            min-height: 42px;
+            margin: 0;
+            padding: 9px 6px;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            background: transparent;
+            color: #475467;
+            font-size: 14px;
+            font-weight: bold;
+            line-height: 1.25;
+            cursor: pointer;
+        }
+
+        .tab-button.active {
+            border-color: #1554d1;
+            background: #ffffff;
+            color: #1554d1;
+            box-shadow: 0 1px 4px rgba(21, 84, 209, 0.12);
+        }
+
+        .tab-panel[hidden] {
+            display: none;
+        }
+
+        .section-title {
+            margin: 18px 0 8px;
+            font-size: 16px;
+            font-weight: bold;
+            color: #1f2937;
+        }
+
+        .qa-list {
+            display: grid;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .qa-card {
+            border: 1px solid #d6dbe6;
+            border-radius: 8px;
+            background: #fbfcff;
+            padding: 13px;
+        }
+
+        .qa-meta {
+            color: #667085;
+            font-size: 12px;
+            line-height: 1.5;
+            margin-bottom: 8px;
+        }
+
+        .qa-label {
+            color: #1554d1;
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .qa-text {
+            color: #263141;
+            font-size: 14px;
+            line-height: 1.55;
+            margin-bottom: 10px;
+            white-space: pre-line;
+            overflow-wrap: anywhere;
+        }
+
+        .answer-toggle {
+            width: auto;
+            margin-top: 2px;
+            padding: 9px 12px;
+            border: 1px solid #1554d1;
+            border-radius: 8px;
+            background: #ffffff;
+            color: #1554d1;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .answer-toggle:disabled {
+            background: #ffffff;
+            color: #9aa9d6;
+            border-color: #9aa9d6;
+        }
+
+        .qa-answer {
+            display: none;
+            margin-top: 10px;
+        }
+
+        .qa-answer.show {
+            display: block;
+        }
+
+        .negative-text {
+            color: #b3261e;
+            font-weight: bold;
+        }
+
+        .empty-state {
+            background: #f8fafc;
+            border: 1px dashed #cfd8e3;
+            border-radius: 8px;
+            color: #667085;
+            font-size: 14px;
+            line-height: 1.5;
+            padding: 12px;
             margin-bottom: 16px;
         }
 
@@ -61,12 +186,13 @@
             font-size: 15px;
         }
 
-        textarea {
+        textarea,
+        input[type="file"],
+        input[type="url"] {
             width: 100%;
-            min-height: 140px;
             padding: 13px 14px;
             border: 1px solid #d6dbe6;
-            border-radius: 12px;
+            border-radius: 8px;
             font-size: 16px;
             outline: none;
             background: #fbfcff;
@@ -74,9 +200,36 @@
             line-height: 1.5;
         }
 
+        textarea {
+            min-height: 140px;
+        }
+
         textarea:focus {
-            border-color: #1f5eff;
+            border-color: #1554d1;
             background: #ffffff;
+        }
+
+        input[type="file"]:focus,
+        input[type="url"]:focus {
+            border-color: #1554d1;
+            background: #ffffff;
+        }
+
+        .field-invalid {
+            border-color: #b3261e !important;
+            background: #fff8f7 !important;
+        }
+
+        .field-error {
+            display: none;
+            color: #b3261e;
+            font-size: 13px;
+            line-height: 1.4;
+            margin-top: 5px;
+        }
+
+        .field-error.show {
+            display: block;
         }
 
         button {
@@ -84,8 +237,8 @@
             margin-top: 22px;
             padding: 14px;
             border: none;
-            border-radius: 14px;
-            background: #1f5eff;
+            border-radius: 8px;
+            background: #1554d1;
             color: #ffffff;
             font-size: 17px;
             font-weight: bold;
@@ -100,7 +253,7 @@
         .message {
             margin-top: 16px;
             padding: 12px;
-            border-radius: 12px;
+            border-radius: 8px;
             display: none;
             font-size: 15px;
             line-height: 1.5;
@@ -128,17 +281,46 @@
         ส่งคำถามถึงครูประจำห้องหรือครูผู้ดูแล
     </div>
 
-    <div class="hint">
-        <b>ตัวอย่างคำถาม</b><br>
-        - ใบงานที่ 1 ต้องส่งภายในวันไหนครับ<br>
-        - ถ้าส่งเป็นรูปถ่ายสมุดได้ไหมคะ<br>
-        - งานที่ 2 ต้องทำกี่ข้อครับ
+    <div class="tab-bar" role="tablist" aria-label="เมนูคำถาม">
+        <button type="button" id="tabPinned" class="tab-button" role="tab" aria-controls="panelPinned" onclick="setQuestionTab('pinned')">ปักหมุด</button>
+        <button type="button" id="tabMine" class="tab-button" role="tab" aria-controls="panelMine" onclick="setQuestionTab('mine')">คำถามของฉัน</button>
+        <button type="button" id="tabAsk" class="tab-button active" role="tab" aria-controls="panelAsk" onclick="setQuestionTab('ask')">ถามคำถาม</button>
     </div>
 
-    <label for="questionText">คำถามของนักเรียน</label>
-    <textarea id="questionText" placeholder="ตัวอย่าง: ใบงานที่ 1 ต้องส่งภายในวันไหนครับ"></textarea>
+    <section id="panelPinned" class="tab-panel" role="tabpanel" aria-labelledby="tabPinned" hidden>
+        <div class="section-title" id="answeredTitle">คำถามที่ครูปักหมุดไว้ในห้องนี้</div>
+        <div id="answeredList" class="qa-list"></div>
+        <div id="answeredEmpty" class="empty-state">กำลังโหลดคำถามในห้อง...</div>
+    </section>
 
-    <button id="sendBtn" onclick="sendQuestion()">ส่งคำถาม</button>
+    <section id="panelMine" class="tab-panel" role="tabpanel" aria-labelledby="tabMine" hidden>
+        <div class="section-title">คำถามของฉัน</div>
+        <div id="myQuestionList" class="qa-list"></div>
+        <div id="myQuestionEmpty" class="empty-state">กำลังโหลดคำถามของฉัน...</div>
+    </section>
+
+    <section id="panelAsk" class="tab-panel" role="tabpanel" aria-labelledby="tabAsk">
+        <div class="hint">
+            <b>ตัวอย่างคำถาม</b><br>
+            - ใบงานที่ 1 ต้องส่งภายในวันไหนครับ<br>
+            - ถ้าส่งเป็นรูปถ่ายสมุดได้ไหมคะ<br>
+            - งานที่ 2 ต้องทำกี่ข้อครับ
+        </div>
+
+        <label for="questionText">คำถามของนักเรียน</label>
+        <textarea id="questionText" maxlength="1000" placeholder="ตัวอย่าง: ใบงานที่ 1 ต้องส่งภายในวันไหนครับ"></textarea>
+        <div id="questionTextError" class="field-error"></div>
+
+        <label for="questionFile">ไฟล์แนบ (ถ้ามี)</label>
+        <input id="questionFile" type="file" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.mp4,.mov,.zip,.rar">
+        <div id="questionFileError" class="field-error"></div>
+
+        <label for="attachmentUrl">หรือลิงก์แนบ (ถ้ามี)</label>
+        <input id="attachmentUrl" type="url" placeholder="https://drive.google.com/...">
+        <div id="attachmentUrlError" class="field-error"></div>
+
+        <button type="button" id="sendBtn" onclick="sendQuestion()">ส่งคำถาม</button>
+    </section>
 
     <div id="messageBox" class="message"></div>
 </div>
@@ -160,6 +342,18 @@
             const profile = await liff.getProfile();
             lineUserId = profile.userId;
 
+            const [hasUnseenAnswer] = await Promise.all([
+                loadMyQuestions(),
+                loadClassroomQuestions()
+            ]);
+
+            const requestedTab = new URLSearchParams(window.location.search).get("tab");
+            if (requestedTab === "mine" || hasUnseenAnswer) {
+                setQuestionTab("mine");
+            } else if (requestedTab === "pinned") {
+                setQuestionTab("pinned");
+            }
+
         } catch (error) {
             showMessage("เปิด LIFF ไม่สำเร็จ: " + error.message, "error");
         }
@@ -172,9 +366,283 @@
         box.style.display = "block";
     }
 
+    function setQuestionTab(tabName) {
+        const tabs = {
+            pinned: {
+                button: document.getElementById("tabPinned"),
+                panel: document.getElementById("panelPinned")
+            },
+            mine: {
+                button: document.getElementById("tabMine"),
+                panel: document.getElementById("panelMine")
+            },
+            ask: {
+                button: document.getElementById("tabAsk"),
+                panel: document.getElementById("panelAsk")
+            }
+        };
+
+        Object.keys(tabs).forEach(name => {
+            const isActive = name === tabName;
+            tabs[name].button.classList.toggle("active", isActive);
+            tabs[name].button.setAttribute("aria-selected", isActive ? "true" : "false");
+            tabs[name].panel.hidden = !isActive;
+        });
+    }
+
+    function setFieldError(fieldId, message) {
+        const field = document.getElementById(fieldId);
+        const error = document.getElementById(fieldId + "Error");
+        if (field) {
+            field.classList.add("field-invalid");
+        }
+        if (error) {
+            error.innerText = message;
+            error.classList.add("show");
+        }
+    }
+
+    function clearFieldError(fieldId) {
+        const field = document.getElementById(fieldId);
+        const error = document.getElementById(fieldId + "Error");
+        if (field) {
+            field.classList.remove("field-invalid");
+        }
+        if (error) {
+            error.innerText = "";
+            error.classList.remove("show");
+        }
+    }
+
+    document.getElementById("questionText").addEventListener("input", () => {
+        clearFieldError("questionText");
+    });
+    document.getElementById("questionFile").addEventListener("change", () => {
+        clearFieldError("questionFile");
+    });
+    document.getElementById("attachmentUrl").addEventListener("input", () => {
+        clearFieldError("attachmentUrl");
+    });
+
+    setQuestionTab("ask");
+
+    function appendText(parent, text) {
+        parent.appendChild(document.createTextNode(text || "-"));
+    }
+
+    function createAttachmentLink(q) {
+        const url = String(q.attachment_url || "").trim();
+        if (!url) {
+            return null;
+        }
+
+        const link = document.createElement("a");
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.className = "qa-label";
+        link.style.display = "inline-block";
+        link.style.marginBottom = "10px";
+        link.textContent = "เปิดไฟล์แนบ" + (q.attachment_name ? ": " + q.attachment_name : "");
+        return link;
+    }
+
+    function createAnswerAttachmentLink(q) {
+        const url = String(q.answer_attachment_url || "").trim();
+        if (!url) {
+            return null;
+        }
+
+        const link = document.createElement("a");
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.className = "qa-label";
+        link.style.display = "inline-block";
+        link.style.marginBottom = "10px";
+        link.textContent = "เปิดไฟล์แนบคำตอบ" + (q.answer_attachment_name ? ": " + q.answer_attachment_name : "");
+        return link;
+    }
+
+    async function loadMyQuestions() {
+        const list = document.getElementById("myQuestionList");
+        const empty = document.getElementById("myQuestionEmpty");
+        list.innerHTML = "";
+        empty.style.display = "block";
+        empty.innerText = "กำลังโหลดคำถามของฉัน...";
+
+        try {
+            const res = await fetch(
+                "/api/student/my-questions?student_line_user_id=" + encodeURIComponent(lineUserId)
+            );
+            const data = await res.json();
+
+            if (!data.success) {
+                empty.innerText = data.message || "โหลดคำถามของฉันไม่สำเร็จ";
+                return false;
+            }
+
+            const questions = data.questions || [];
+            if (questions.length === 0) {
+                empty.innerText = "ยังไม่มีคำถามของฉัน";
+                return false;
+            }
+
+            const hasUnseenAnswer = questions.some(q =>
+                String(q.status || "").trim() === "answered"
+                && String(q.student_seen || "").trim() !== "yes"
+            );
+
+            questions.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+            empty.style.display = "none";
+            questions.slice(0, 20).forEach(q => {
+                list.appendChild(createMyQuestionCard(q));
+            });
+            return hasUnseenAnswer;
+
+        } catch (error) {
+            empty.innerText = "เกิดข้อผิดพลาด: " + error.message;
+            return false;
+        }
+    }
+
+    async function loadClassroomQuestions() {
+        const list = document.getElementById("answeredList");
+        const empty = document.getElementById("answeredEmpty");
+        list.innerHTML = "";
+        empty.style.display = "block";
+        empty.innerText = "กำลังโหลดคำถามในห้อง...";
+
+        try {
+            const res = await fetch(
+                "/api/student/classroom-questions?student_line_user_id=" + encodeURIComponent(lineUserId)
+            );
+            const data = await res.json();
+
+            if (!data.success) {
+                empty.innerText = data.message || "โหลดคำถามในห้องไม่สำเร็จ";
+                return;
+            }
+
+            const questions = data.questions || [];
+            if (questions.length === 0) {
+                empty.innerText = "ยังไม่มีคำถามที่ครูปักหมุดไว้ในห้องนี้";
+                return;
+            }
+
+            empty.style.display = "none";
+            questions.forEach(q => {
+                list.appendChild(createAnsweredQuestionCard(q));
+            });
+
+        } catch (error) {
+            empty.innerText = "เกิดข้อผิดพลาด: " + error.message;
+        }
+    }
+
+    function createMyQuestionCard(q) {
+        const card = document.createElement("div");
+        card.className = "qa-card";
+
+        const meta = document.createElement("div");
+        const answered = String(q.status || "").trim() === "answered";
+        meta.className = answered ? "qa-meta" : "qa-meta negative-text";
+        appendText(meta, answered ? "ครูตอบแล้ว" : "รอครูตอบ");
+        if (q.created_at) {
+            meta.appendChild(document.createElement("br"));
+            appendText(meta, "ถามเมื่อ: " + q.created_at);
+        }
+        if (q.answered_at) {
+            meta.appendChild(document.createElement("br"));
+            appendText(meta, "ตอบเมื่อ: " + q.answered_at);
+        }
+
+        const questionLabel = document.createElement("div");
+        questionLabel.className = "qa-label";
+        questionLabel.innerText = "คำถามของฉัน";
+
+        const questionText = document.createElement("div");
+        questionText.className = "qa-text";
+        appendText(questionText, q.question_text || "");
+
+        const answerLabel = document.createElement("div");
+        answerLabel.className = "qa-label";
+        answerLabel.innerText = answered ? "คำตอบครู" : "สถานะ";
+
+        const answerText = document.createElement("div");
+        answerText.className = answered ? "qa-text" : "qa-text negative-text";
+        appendText(answerText, answered ? (q.answer_text || "") : "รอครูตอบคำถามนี้");
+        const answerAttachmentLink = answered ? createAnswerAttachmentLink(q) : null;
+
+        card.appendChild(meta);
+        card.appendChild(questionLabel);
+        card.appendChild(questionText);
+        const attachmentLink = createAttachmentLink(q);
+        if (attachmentLink) {
+            card.appendChild(attachmentLink);
+        }
+        card.appendChild(answerLabel);
+        card.appendChild(answerText);
+        if (answerAttachmentLink) {
+            card.appendChild(answerAttachmentLink);
+        }
+        return card;
+    }
+
+    function createAnsweredQuestionCard(q) {
+        const card = document.createElement("div");
+        card.className = "qa-card";
+
+        const questionText = document.createElement("div");
+        questionText.className = "qa-text";
+        appendText(questionText, q.question_text || "");
+
+        const toggleButton = document.createElement("button");
+        toggleButton.type = "button";
+        toggleButton.className = "answer-toggle";
+        toggleButton.innerText = "ดูคำตอบ";
+
+        const answerBox = document.createElement("div");
+        answerBox.className = "qa-answer";
+
+        const answerLabel = document.createElement("div");
+        answerLabel.className = "qa-label";
+        answerLabel.innerText = "คำตอบ";
+
+        const answerText = document.createElement("div");
+        answerText.className = "qa-text";
+        appendText(answerText, q.answer_text || "");
+        const answerAttachmentLink = createAnswerAttachmentLink(q);
+
+        answerBox.appendChild(answerLabel);
+        answerBox.appendChild(answerText);
+        if (answerAttachmentLink) {
+            answerBox.appendChild(answerAttachmentLink);
+        }
+
+        toggleButton.addEventListener("click", () => {
+            const isOpen = answerBox.classList.toggle("show");
+            toggleButton.innerText = isOpen ? "ซ่อนคำตอบ" : "ดูคำตอบ";
+        });
+
+        card.appendChild(questionText);
+        const attachmentLink = createAttachmentLink(q);
+        if (attachmentLink) {
+            card.appendChild(attachmentLink);
+        }
+        card.appendChild(toggleButton);
+        card.appendChild(answerBox);
+        return card;
+    }
+
     async function sendQuestion() {
         const questionText = document.getElementById("questionText").value.trim();
+        const questionFile = document.getElementById("questionFile").files[0];
+        const attachmentUrl = document.getElementById("attachmentUrl").value.trim();
         const btn = document.getElementById("sendBtn");
+        clearFieldError("questionText");
+        clearFieldError("questionFile");
+        clearFieldError("attachmentUrl");
 
         if (!lineUserId) {
             showMessage("ไม่พบ LINE userId กรุณาปิดแล้วเปิดใหม่", "error");
@@ -182,7 +650,26 @@
         }
 
         if (!questionText) {
+            setFieldError("questionText", "กรุณากรอกคำถาม");
             showMessage("กรุณากรอกคำถาม", "error");
+            return;
+        }
+
+        if (questionText.length < 5) {
+            setFieldError("questionText", "กรุณาพิมพ์คำถามให้ชัดเจนขึ้นอีกนิด");
+            showMessage("กรุณาพิมพ์คำถามให้ชัดเจนขึ้นอีกนิด", "error");
+            return;
+        }
+
+        if (attachmentUrl && !/^https?:\/\/.+/i.test(attachmentUrl)) {
+            setFieldError("attachmentUrl", "กรุณาวางลิงก์ที่ขึ้นต้นด้วย http:// หรือ https://");
+            showMessage("กรุณาวางลิงก์ที่ขึ้นต้นด้วย http:// หรือ https://", "error");
+            return;
+        }
+
+        if (questionFile && questionFile.size > 100 * 1024 * 1024) {
+            setFieldError("questionFile", "ไฟล์ใหญ่เกิน 100 MB กรุณาใช้ลิงก์แนบแทน");
+            showMessage("ไฟล์ใหญ่เกิน 100 MB กรุณาใช้ลิงก์แนบแทน", "error");
             return;
         }
 
@@ -190,26 +677,33 @@
         btn.innerText = "กำลังส่ง...";
 
         try {
+            const formData = new FormData();
+            formData.append("student_line_user_id", lineUserId);
+            formData.append("question_text", questionText);
+            formData.append("attachment_url", attachmentUrl);
+            if (questionFile) {
+                formData.append("file", questionFile);
+            }
+
             const res = await fetch("/api/student/question", {
                 method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({
-                    line_user_id: lineUserId,
-                    question_text: questionText
-                })
+                body: formData
             });
 
             const data = await res.json();
 
             if (data.success) {
                 showMessage("ส่งคำถามเรียบร้อยแล้ว", "success");
-                btn.innerText = "ส่งสำเร็จ";
-
-                setTimeout(() => {
-                    if (liff.isInClient()) {
-                        liff.closeWindow();
-                    }
-                }, 1500);
+                document.getElementById("questionText").value = "";
+                document.getElementById("questionFile").value = "";
+                document.getElementById("attachmentUrl").value = "";
+                btn.disabled = false;
+                btn.innerText = "ส่งคำถาม";
+                await Promise.all([
+                    loadMyQuestions(),
+                    loadClassroomQuestions()
+                ]);
+                setQuestionTab("mine");
 
             } else {
                 showMessage(data.message || "ส่งคำถามไม่สำเร็จ", "error");

@@ -1,8 +1,8 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <title>ประกาศถึงห้องเรียน</title>
+    <title>ประกาศและเช็คชื่อ</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -12,24 +12,25 @@
 
         body {
             font-family: Arial, "Tahoma", sans-serif;
-            background: #f4f7fb;
+            background: #eef2f7;
             margin: 0;
             padding: 16px;
             color: #222;
         }
 
         .container {
-            max-width: 560px;
+            max-width: 640px;
             margin: 0 auto;
             background: #ffffff;
-            border-radius: 18px;
+            border: 1px solid #dbe3ee;
+            border-radius: 8px;
             padding: 22px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
         }
 
         h1 {
             text-align: center;
-            color: #1f5eff;
+            color: #1554d1;
             font-size: 24px;
             margin: 0 0 8px;
         }
@@ -42,11 +43,41 @@
             margin-bottom: 18px;
         }
 
+        .tab-bar {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+
+        .tab-button {
+            width: 100%;
+            margin: 0;
+            padding: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            background: #f8fafc;
+            color: #334155;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .tab-button.active {
+            background: #1554d1;
+            border-color: #1554d1;
+            color: #ffffff;
+        }
+
+        .tab-panel[hidden] {
+            display: none;
+        }
+
         .hint {
             background: #eef4ff;
             border: 1px solid #c8d9ff;
             color: #2450a4;
-            border-radius: 12px;
+            border-radius: 8px;
             padding: 12px;
             font-size: 14px;
             line-height: 1.6;
@@ -67,7 +98,7 @@
             width: 100%;
             padding: 13px 14px;
             border: 1px solid #d6dbe6;
-            border-radius: 12px;
+            border-radius: 8px;
             font-size: 16px;
             background: #fbfcff;
             outline: none;
@@ -82,8 +113,31 @@
         input:focus,
         select:focus,
         textarea:focus {
-            border-color: #1f5eff;
+            border-color: #1554d1;
             background: #ffffff;
+        }
+
+        .field-invalid {
+            border-color: #b3261e !important;
+            background: #fff8f7 !important;
+        }
+
+        .field-error {
+            display: none;
+            color: #b3261e;
+            font-size: 13px;
+            line-height: 1.4;
+            margin-top: 5px;
+        }
+
+        .field-error.show {
+            display: block;
+        }
+
+        .time-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
         }
 
         button {
@@ -91,12 +145,16 @@
             margin-top: 22px;
             padding: 14px;
             border: none;
-            border-radius: 14px;
-            background: #1f5eff;
+            border-radius: 8px;
+            background: #1554d1;
             color: #fff;
             font-size: 17px;
             font-weight: bold;
             cursor: pointer;
+        }
+
+        button.secondary {
+            background: #0f766e;
         }
 
         button:disabled {
@@ -104,10 +162,173 @@
             cursor: not-allowed;
         }
 
+        .attendance-list {
+            display: grid;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .attendance-table-wrap {
+            margin-top: 16px;
+            overflow-x: auto;
+            border: 1px solid #dbe3ee;
+            border-radius: 8px;
+            background: #ffffff;
+        }
+
+        .attendance-table {
+            width: 100%;
+            min-width: 720px;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        .attendance-table th {
+            background: #1f2937;
+            color: #ffffff;
+            padding: 12px 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .attendance-table th:nth-child(2) {
+            text-align: left;
+        }
+
+        .attendance-table td {
+            border-top: 1px solid #e5e7eb;
+            padding: 9px 8px;
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        .attendance-table td:nth-child(2) {
+            text-align: left;
+            font-weight: bold;
+            color: #374151;
+            min-width: 170px;
+        }
+
+        .attendance-table tr:nth-child(even) td {
+            background: #f8fafc;
+        }
+
+        .attendance-table tr.selected-row td {
+            background: #ecfdf3;
+        }
+
+        .attendance-status-btn {
+            width: auto;
+            min-width: 46px;
+            margin: 0;
+            padding: 7px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: #ffffff;
+            color: #374151;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .attendance-status-btn[data-status="มา"] { color: #059669; border-color: #34d399; }
+        .attendance-status-btn[data-status="กิจกรรม"] { color: #0891b2; border-color: #67e8f9; }
+        .attendance-status-btn[data-status="สาย"] { color: #2563eb; border-color: #93c5fd; }
+        .attendance-status-btn[data-status="ลา"] { color: #ca8a04; border-color: #fde68a; }
+        .attendance-status-btn[data-status="ขาด"],
+        .attendance-status-btn[data-status="หนี"] { color: #dc2626; border-color: #fca5a5; }
+
+        .attendance-status-btn.active[data-status="มา"] { background: #10b981; color: #ffffff; border-color: #10b981; }
+        .attendance-status-btn.active[data-status="กิจกรรม"] { background: #06b6d4; color: #ffffff; border-color: #06b6d4; }
+        .attendance-status-btn.active[data-status="สาย"] { background: #3b82f6; color: #ffffff; border-color: #3b82f6; }
+        .attendance-status-btn.active[data-status="ลา"] { background: #facc15; color: #713f12; border-color: #facc15; }
+        .attendance-status-btn.active[data-status="ขาด"],
+        .attendance-status-btn.active[data-status="หนี"] { background: #ef4444; color: #ffffff; border-color: #ef4444; }
+
+        .attendance-note {
+            width: 120px;
+            min-width: 120px;
+            padding: 8px;
+            font-size: 13px;
+        }
+        .exam-score-input {
+            width: 72px;
+            min-width: 72px;
+            padding: 8px;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .visibility-check {
+            width: auto;
+            margin: 0;
+            padding: 0;
+            transform: scale(1.2);
+        }
+
+        .visibility-table td:nth-child(2),
+        .visibility-table td:nth-child(3) {
+            text-align: left;
+            font-weight: normal;
+            color: #374151;
+        }
+
+        .visibility-type {
+            color: #64748b;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        .status-option input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .status-label {
+            display: block;
+            width: 100%;
+            padding: 10px 8px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            background: #f8fafc;
+            color: #334155;
+            text-align: center;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .status-option input:checked + .status-label {
+            border-color: #1554d1;
+            background: #e8f0ff;
+            color: #1554d1;
+        }
+
+        .note-input {
+            margin-top: 10px;
+            font-size: 15px;
+        }
+
+        .empty-state {
+            margin-top: 14px;
+            padding: 14px;
+            border: 1px dashed #cbd5e1;
+            border-radius: 8px;
+            color: #64748b;
+            text-align: center;
+            line-height: 1.5;
+        }
+
         .message {
             margin-top: 16px;
             padding: 12px;
-            border-radius: 12px;
+            border-radius: 8px;
             display: none;
             font-size: 15px;
             line-height: 1.5;
@@ -125,35 +346,119 @@
             color: #b3261e;
             border: 1px solid #f4b4b4;
         }
+        @media (max-width: 430px) {
+            body {
+                padding: 10px;
+            }
+
+            .container {
+                padding: 16px;
+            }
+
+            .time-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .status-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>ประกาศถึงห้องเรียน</h1>
+    <h1>ประกาศและเช็คชื่อ</h1>
     <div class="subtitle">
-        ใช้สำหรับบันทึกประกาศให้นักเรียนในห้องเปิดดูจากเมนูประกาศ
+        ใช้สำหรับประกาศถึงห้องเรียนและบันทึกการเข้าเรียนของนักเรียน
     </div>
 
-    <div class="hint">
-        <b>ตัวอย่างประกาศ</b><br>
-        พรุ่งนี้ให้นักเรียนนำสมุดวิทยาศาสตร์มาด้วย<br>
-        หรือ<br>
-        ใบงานที่ 1 ส่งได้ถึงวันที่ 20 พฤษภาคม เวลา 23:59 น.
+    <div class="tab-bar">
+        <button type="button" class="tab-button active" id="announceTabBtn" onclick="setTab('announce')">ประกาศ</button>
+        <button type="button" class="tab-button" id="attendanceTabBtn" onclick="setTab('attendance')">เช็คชื่อ</button>
+        <button type="button" class="tab-button" id="examTabBtn" onclick="setTab('exam')">คะแนน</button>
     </div>
 
-    <label for="teacherName">ชื่อครู</label>
-    <input type="text" id="teacherName" placeholder="ตัวอย่าง: ครูสมชาย">
+    <section class="tab-panel" id="announcePanel">
+        <div class="hint">
+            <b>ตัวอย่างประกาศ</b><br>
+            พรุ่งนี้ให้นักเรียนนำสมุดวิทยาศาสตร์มาด้วย<br>
+            หรือ<br>
+            ใบงานที่ 1 ส่งได้ถึงวันที่ 20 พฤษภาคม เวลา 23:59 น.
+        </div>
 
-    <label for="classroom">เลือกห้อง</label>
-    <select id="classroom">
-        <option value="">กำลังโหลดห้อง...</option>
-    </select>
+        <label for="teacherName">ชื่อครู</label>
+        <input type="text" id="teacherName" maxlength="80" autocomplete="name" placeholder="ตัวอย่าง: ครูสมชาย">
 
-    <label for="message">ข้อความประกาศ</label>
-    <textarea id="message" placeholder="ตัวอย่าง: พรุ่งนี้ให้นักเรียนนำสมุดวิทยาศาสตร์มาด้วย"></textarea>
+        <label for="classroom">เลือกห้อง</label>
+        <select id="classroom">
+            <option value="">กำลังโหลดห้อง...</option>
+        </select>
+        <div id="classroomError" class="field-error"></div>
 
-    <button id="sendBtn" onclick="sendAnnouncement()">ส่งประกาศ</button>
+        <label for="message">ข้อความประกาศ</label>
+        <textarea id="message" maxlength="1200" placeholder="ตัวอย่าง: พรุ่งนี้ให้นักเรียนนำสมุดวิทยาศาสตร์มาด้วย"></textarea>
+        <div id="messageError" class="field-error"></div>
+
+        <button type="button" id="sendBtn" onclick="sendAnnouncement()">ส่งประกาศ</button>
+    </section>
+
+    <section class="tab-panel" id="attendancePanel" hidden>
+        <label for="attendanceClassroom">เลือกห้อง</label>
+        <select id="attendanceClassroom">
+            <option value="">กำลังโหลดห้อง...</option>
+        </select>
+        <div id="attendanceClassroomError" class="field-error"></div>
+
+        <label for="attendanceDate">วันที่เรียน</label>
+        <input type="date" id="attendanceDate">
+        <div id="attendanceDateError" class="field-error"></div>
+
+        <div class="time-grid">
+            <div>
+                <label for="startTime">เวลาเริ่ม</label>
+                <input type="time" id="startTime">
+                <div id="startTimeError" class="field-error"></div>
+            </div>
+            <div>
+                <label for="endTime">เวลาสิ้นสุด</label>
+                <input type="time" id="endTime">
+                <div id="endTimeError" class="field-error"></div>
+            </div>
+        </div>
+
+        <button type="button" class="secondary" id="loadAttendanceBtn" onclick="loadAttendance()">โหลดรายชื่อนักเรียน</button>
+
+        <div id="attendanceList" class="attendance-list"></div>
+        <button type="button" id="saveAttendanceBtn" onclick="saveAttendance()" hidden>บันทึกเช็คชื่อ</button>
+    </section>
+
+    <section class="tab-panel" id="examPanel" hidden>
+        <div class="hint">
+            เลือกห้องแล้วตั้งค่าแสดงคะแนนแยกรายงานได้ทีละชิ้น งานที่เพิ่มใหม่จะขึ้นในรายการด้านล่าง
+        </div>
+
+        <label for="examClassroom">เลือกห้อง</label>
+        <select id="examClassroom">
+            <option value="">กำลังโหลดห้อง...</option>
+        </select>
+        <div id="examClassroomError" class="field-error"></div>
+
+        <button type="button" class="secondary" id="loadVisibilityBtn" onclick="loadScoreVisibility(true)">โหลดรายการงาน</button>
+
+        <div id="visibilityList" class="attendance-list"></div>
+
+        <button type="button" class="secondary" id="saveVisibilityBtn" onclick="saveScoreVisibility()" hidden>บันทึกการแสดงคะแนน</button>
+
+        <div class="hint" style="margin-top: 18px;">
+            กรอกคะแนนกลางภาคและปลายภาค ช่องละไม่เกิน 20 คะแนน ระบบจะนำไปคิดรวมกับคะแนนเก็บ 60 ในชีตสรุปห้อง
+        </div>
+
+        <button type="button" class="secondary" id="loadExamBtn" onclick="loadExamScores()">โหลดรายชื่อนักเรียน (กรอกคะแนนสอบ)</button>
+
+        <div id="examList" class="attendance-list"></div>
+        <button type="button" id="saveExamBtn" onclick="saveExamScores()" hidden>บันทึกคะแนนสอบ</button>
+    </section>
 
     <div id="messageBox" class="message"></div>
 </div>
@@ -161,7 +466,11 @@
 <script>
     const RAW_LIFF_ID = "{{ liff_id }}";
     const LIFF_ID = String(RAW_LIFF_ID || "").trim().replace("https://liff.line.me/", "");
+    const attendanceStatuses = ["มา", "กิจกรรม", "สาย", "ลา", "ขาด", "หนี"];
     let teacherLineUserId = "";
+    let loadedAttendanceStudents = [];
+    let loadedExamStudents = [];
+    let loadedVisibilityAssignments = [];
 
     async function main() {
         try {
@@ -174,12 +483,36 @@
 
             const profile = await liff.getProfile();
             teacherLineUserId = profile.userId;
+            setToday();
 
             await loadRooms();
 
         } catch (error) {
             showMessage("เปิด LIFF ไม่สำเร็จ: " + error.message, "error");
         }
+    }
+
+    function setToday() {
+        const dateInput = document.getElementById("attendanceDate");
+        if (!dateInput.value) {
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, "0");
+            const dd = String(today.getDate()).padStart(2, "0");
+            dateInput.value = `${yyyy}-${mm}-${dd}`;
+        }
+    }
+
+    function setTab(tabName) {
+        const isAttendance = tabName === "attendance";
+        const isExam = tabName === "exam";
+        document.getElementById("announcePanel").hidden = isAttendance || isExam;
+        document.getElementById("attendancePanel").hidden = !isAttendance;
+        document.getElementById("examPanel").hidden = !isExam;
+        document.getElementById("announceTabBtn").classList.toggle("active", !isAttendance && !isExam);
+        document.getElementById("attendanceTabBtn").classList.toggle("active", isAttendance);
+        document.getElementById("examTabBtn").classList.toggle("active", isExam);
+        document.getElementById("messageBox").style.display = "none";
     }
 
     function showMessage(text, type) {
@@ -189,17 +522,64 @@
         box.style.display = "block";
     }
 
+    function setFieldError(fieldId, message) {
+        const field = document.getElementById(fieldId);
+        const error = document.getElementById(fieldId + "Error");
+        if (field) {
+            field.classList.add("field-invalid");
+        }
+        if (error) {
+            error.innerText = message;
+            error.classList.add("show");
+        }
+    }
+
+    function clearFieldError(fieldId) {
+        const field = document.getElementById(fieldId);
+        const error = document.getElementById(fieldId + "Error");
+        if (field) {
+            field.classList.remove("field-invalid");
+        }
+        if (error) {
+            error.innerText = "";
+            error.classList.remove("show");
+        }
+    }
+
+    ["classroom", "message", "attendanceClassroom", "attendanceDate", "startTime", "endTime", "examClassroom"].forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (field) {
+            field.addEventListener(field.tagName === "SELECT" ? "change" : "input", () => { clearFieldError(fieldId); if (fieldId === "examClassroom") { loadScoreVisibility(); } });
+        }
+    });
+
+    function fillRoomSelect(select, rooms) {
+        select.innerHTML = `<option value="">-- เลือกห้อง --</option>`;
+        rooms.forEach(room => {
+            const opt = document.createElement("option");
+            opt.value = room;
+            opt.textContent = room;
+            select.appendChild(opt);
+        });
+    }
+
     async function loadRooms() {
-        const select = document.getElementById("classroom");
+        const announceSelect = document.getElementById("classroom");
+        const attendanceSelect = document.getElementById("attendanceClassroom");
+        const examSelect = document.getElementById("examClassroom");
 
         try {
             const res = await fetch("/api/teacher/my-rooms?teacher_line_user_id=" + encodeURIComponent(teacherLineUserId));
             const data = await res.json();
 
-            select.innerHTML = "";
+            announceSelect.innerHTML = "";
+            attendanceSelect.innerHTML = "";
+            examSelect.innerHTML = "";
 
             if (!data.success) {
-                select.innerHTML = `<option value="">โหลดห้องไม่สำเร็จ</option>`;
+                announceSelect.innerHTML = `<option value="">โหลดห้องไม่สำเร็จ</option>`;
+                attendanceSelect.innerHTML = `<option value="">โหลดห้องไม่สำเร็จ</option>`;
+                examSelect.innerHTML = `<option value="">โหลดห้องไม่สำเร็จ</option>`;
                 showMessage(data.message || "โหลดห้องไม่สำเร็จ", "error");
                 return;
             }
@@ -207,19 +587,16 @@
             const rooms = data.rooms || [];
 
             if (rooms.length === 0) {
-                select.innerHTML = `<option value="">ยังไม่ได้ตั้งค่าห้อง</option>`;
+                announceSelect.innerHTML = `<option value="">ยังไม่ได้ตั้งค่าห้อง</option>`;
+                attendanceSelect.innerHTML = `<option value="">ยังไม่ได้ตั้งค่าห้อง</option>`;
+                examSelect.innerHTML = `<option value="">ยังไม่ได้ตั้งค่าห้อง</option>`;
                 showMessage("ยังไม่ได้ตั้งค่าห้อง กรุณาไปเมนูตั้งค่าห้องก่อน", "error");
                 return;
             }
 
-            select.innerHTML = `<option value="">-- เลือกห้อง --</option>`;
-
-            rooms.forEach(room => {
-                const opt = document.createElement("option");
-                opt.value = room;
-                opt.textContent = room;
-                select.appendChild(opt);
-            });
+            fillRoomSelect(announceSelect, rooms);
+            fillRoomSelect(attendanceSelect, rooms);
+            fillRoomSelect(examSelect, rooms);
 
         } catch (error) {
             showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
@@ -231,6 +608,8 @@
         const classroom = document.getElementById("classroom").value.trim();
         const message = document.getElementById("message").value.trim();
         const btn = document.getElementById("sendBtn");
+        clearFieldError("classroom");
+        clearFieldError("message");
 
         if (!teacherLineUserId) {
             showMessage("ไม่พบ LINE userId กรุณาปิดแล้วเปิดใหม่", "error");
@@ -238,12 +617,20 @@
         }
 
         if (!classroom) {
+            setFieldError("classroom", "กรุณาเลือกห้อง");
             showMessage("กรุณาเลือกห้อง", "error");
             return;
         }
 
         if (!message) {
+            setFieldError("message", "กรุณากรอกข้อความประกาศ");
             showMessage("กรุณากรอกข้อความประกาศ", "error");
+            return;
+        }
+
+        if (message.length < 3) {
+            setFieldError("message", "กรุณาพิมพ์ประกาศให้ชัดเจนขึ้นอีกนิด");
+            showMessage("กรุณาพิมพ์ประกาศให้ชัดเจนขึ้นอีกนิด", "error");
             return;
         }
 
@@ -287,8 +674,605 @@
         }
     }
 
+    function validateAttendanceFilters() {
+        const classroom = document.getElementById("attendanceClassroom").value.trim();
+        const attendanceDate = document.getElementById("attendanceDate").value.trim();
+        const startTime = document.getElementById("startTime").value.trim();
+        const endTime = document.getElementById("endTime").value.trim();
+        let valid = true;
+
+        ["attendanceClassroom", "attendanceDate", "startTime", "endTime"].forEach(clearFieldError);
+
+        if (!teacherLineUserId) {
+            showMessage("ไม่พบ LINE userId กรุณาปิดแล้วเปิดใหม่", "error");
+            valid = false;
+        }
+        if (!classroom) {
+            setFieldError("attendanceClassroom", "กรุณาเลือกห้อง");
+            valid = false;
+        }
+        if (!attendanceDate) {
+            setFieldError("attendanceDate", "กรุณาเลือกวันที่เรียน");
+            valid = false;
+        }
+        if (!startTime) {
+            setFieldError("startTime", "กรุณาเลือกเวลาเริ่ม");
+            valid = false;
+        }
+        if (!endTime) {
+            setFieldError("endTime", "กรุณาเลือกเวลาสิ้นสุด");
+            valid = false;
+        }
+
+        return valid ? { classroom, attendanceDate, startTime, endTime } : null;
+    }
+
+    function setAttendanceStatus(row, status) {
+        row.dataset.status = status;
+        row.classList.toggle("selected-row", status === "มา");
+        row.querySelectorAll(".attendance-status-btn").forEach(btn => {
+            btn.classList.toggle("active", btn.dataset.status === status);
+        });
+    }
+
+    function renderAttendanceStudents(students) {
+        const list = document.getElementById("attendanceList");
+        const saveBtn = document.getElementById("saveAttendanceBtn");
+        list.innerHTML = "";
+        saveBtn.hidden = true;
+
+        if (!students.length) {
+            const empty = document.createElement("div");
+            empty.className = "empty-state";
+            empty.textContent = "ยังไม่มีนักเรียนลงทะเบียนในห้องนี้";
+            list.appendChild(empty);
+            return;
+        }
+
+        const wrap = document.createElement("div");
+        wrap.className = "attendance-table-wrap";
+
+        const table = document.createElement("table");
+        table.className = "attendance-table";
+
+        const thead = document.createElement("thead");
+        const headRow = document.createElement("tr");
+        ["ที่", "ชื่อ-นามสกุล", "มา", "กิจกรรม", "สาย", "ลา", "ขาด", "หนี", "หมายเหตุ"].forEach(text => {
+            const th = document.createElement("th");
+            th.textContent = text;
+            headRow.appendChild(th);
+        });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement("tbody");
+        students.forEach((student, index) => {
+            const row = document.createElement("tr");
+            row.className = "attendance-row";
+            row.dataset.studentId = student.student_line_user_id || "";
+            row.dataset.studentName = student.student_name || "";
+            row.dataset.studentCode = student.student_code || "";
+
+            const numberCell = document.createElement("td");
+            numberCell.textContent = student.student_code || String(index + 1);
+            row.appendChild(numberCell);
+
+            const nameCell = document.createElement("td");
+            nameCell.textContent = student.student_name || "ไม่ระบุชื่อ";
+            row.appendChild(nameCell);
+
+            attendanceStatuses.forEach(status => {
+                const td = document.createElement("td");
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "attendance-status-btn";
+                btn.dataset.status = status;
+                btn.textContent = status;
+                btn.addEventListener("click", () => setAttendanceStatus(row, status));
+                td.appendChild(btn);
+                row.appendChild(td);
+            });
+
+            const noteCell = document.createElement("td");
+            const note = document.createElement("input");
+            note.type = "text";
+            note.className = "attendance-note";
+            note.placeholder = "หมายเหตุ";
+            note.value = student.note || "";
+            noteCell.appendChild(note);
+            row.appendChild(noteCell);
+
+            tbody.appendChild(row);
+            setAttendanceStatus(row, student.status || "มา");
+        });
+
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+        list.appendChild(wrap);
+        saveBtn.hidden = false;
+    }
+    async function loadAttendance() {
+        const filters = validateAttendanceFilters();
+        const btn = document.getElementById("loadAttendanceBtn");
+        if (!filters) {
+            showMessage("กรุณากรอกข้อมูลเช็คชื่อให้ครบ", "error");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "กำลังโหลด...";
+
+        try {
+            const params = new URLSearchParams({
+                teacher_line_user_id: teacherLineUserId,
+                classroom: filters.classroom,
+                attendance_date: filters.attendanceDate,
+                start_time: filters.startTime,
+                end_time: filters.endTime
+            });
+            const res = await fetch("/api/teacher/attendance?" + params.toString());
+            const data = await res.json();
+
+            if (!data.success) {
+                showMessage(data.message || "โหลดรายชื่อไม่สำเร็จ", "error");
+                return;
+            }
+
+            loadedAttendanceStudents = data.students || [];
+            renderAttendanceStudents(loadedAttendanceStudents);
+            showMessage("โหลดรายชื่อนักเรียนแล้ว", "success");
+
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "โหลดรายชื่อนักเรียน";
+        }
+    }
+
+    async function saveAttendance() {
+        const filters = validateAttendanceFilters();
+        const btn = document.getElementById("saveAttendanceBtn");
+        if (!filters) {
+            showMessage("กรุณากรอกข้อมูลเช็คชื่อให้ครบ", "error");
+            return;
+        }
+
+        const rows = Array.from(document.querySelectorAll(".attendance-row"));
+        const students = rows.map(row => {
+            const note = row.querySelector(".attendance-note");
+            return {
+                student_line_user_id: row.dataset.studentId,
+                student_name: row.dataset.studentName,
+                student_code: row.dataset.studentCode,
+                status: row.dataset.status || "มา",
+                note: note ? note.value.trim() : ""
+            };
+        });
+
+        if (!students.length) {
+            showMessage("ยังไม่มีรายชื่อนักเรียนสำหรับบันทึก", "error");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "กำลังบันทึก...";
+
+        try {
+            const res = await fetch("/api/teacher/attendance", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    teacher_line_user_id: teacherLineUserId,
+                    classroom: filters.classroom,
+                    attendance_date: filters.attendanceDate,
+                    start_time: filters.startTime,
+                    end_time: filters.endTime,
+                    students: students
+                })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                showMessage(data.message || "บันทึกเช็คชื่อเรียบร้อยแล้ว", "success");
+            } else {
+                showMessage(data.message || "บันทึกเช็คชื่อไม่สำเร็จ", "error");
+            }
+
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "บันทึกเช็คชื่อ";
+        }
+    }
+
+    function validateExamFilters() {
+        const classroom = document.getElementById("examClassroom").value.trim();
+        clearFieldError("examClassroom");
+
+        if (!teacherLineUserId) {
+            showMessage("ไม่พบ LINE userId กรุณาปิดแล้วเปิดใหม่", "error");
+            return null;
+        }
+
+        if (!classroom) {
+            setFieldError("examClassroom", "กรุณาเลือกห้อง");
+            showMessage("กรุณาเลือกห้อง", "error");
+            return null;
+        }
+
+        return { classroom };
+    }
+
+    function renderExamStudents(students) {
+        const list = document.getElementById("examList");
+        const saveBtn = document.getElementById("saveExamBtn");
+        list.innerHTML = "";
+        saveBtn.hidden = true;
+
+        if (!students.length) {
+            const empty = document.createElement("div");
+            empty.className = "empty-state";
+            empty.textContent = "ยังไม่มีนักเรียนลงทะเบียนในห้องนี้";
+            list.appendChild(empty);
+            return;
+        }
+
+        const wrap = document.createElement("div");
+        wrap.className = "attendance-table-wrap";
+
+        const table = document.createElement("table");
+        table.className = "attendance-table";
+
+        const thead = document.createElement("thead");
+        const headRow = document.createElement("tr");
+        ["ที่", "ชื่อ-นามสกุล", "กลางภาค / 20", "ปลายภาค / 20"].forEach(text => {
+            const th = document.createElement("th");
+            th.textContent = text;
+            headRow.appendChild(th);
+        });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement("tbody");
+        students.forEach((student, index) => {
+            const row = document.createElement("tr");
+            row.className = "exam-row";
+            row.dataset.studentId = student.student_line_user_id || "";
+            row.dataset.studentName = student.student_name || "";
+            row.dataset.studentCode = student.student_code || "";
+
+            const numberCell = document.createElement("td");
+            numberCell.textContent = student.student_code || String(index + 1);
+            row.appendChild(numberCell);
+
+            const nameCell = document.createElement("td");
+            nameCell.textContent = student.student_name || "ไม่ระบุชื่อ";
+            row.appendChild(nameCell);
+
+            const midtermCell = document.createElement("td");
+            const midtermInput = document.createElement("input");
+            midtermInput.type = "number";
+            midtermInput.min = "0";
+            midtermInput.max = "20";
+            midtermInput.step = "0.01";
+            midtermInput.inputMode = "decimal";
+            midtermInput.className = "exam-score-input midterm-score";
+            midtermInput.value = student.midterm_score || "";
+            midtermCell.appendChild(midtermInput);
+            row.appendChild(midtermCell);
+
+            const finalCell = document.createElement("td");
+            const finalInput = document.createElement("input");
+            finalInput.type = "number";
+            finalInput.min = "0";
+            finalInput.max = "20";
+            finalInput.step = "0.01";
+            finalInput.inputMode = "decimal";
+            finalInput.className = "exam-score-input final-score";
+            finalInput.value = student.final_score || "";
+            finalCell.appendChild(finalInput);
+            row.appendChild(finalCell);
+
+            tbody.appendChild(row);
+        });
+
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+        list.appendChild(wrap);
+        saveBtn.hidden = false;
+    }
+
+    function renderVisibilityList(assignments, examVisibility) {
+        const list = document.getElementById("visibilityList");
+        const saveBtn = document.getElementById("saveVisibilityBtn");
+        list.innerHTML = "";
+        saveBtn.hidden = true;
+        loadedVisibilityAssignments = assignments || [];
+
+        const wrap = document.createElement("div");
+        wrap.className = "attendance-table-wrap";
+
+        const table = document.createElement("table");
+        table.className = "attendance-table visibility-table";
+
+        const thead = document.createElement("thead");
+        const headRow = document.createElement("tr");
+        ["แสดง", "บท / งาน", "ประเภท"].forEach(text => {
+            const th = document.createElement("th");
+            th.textContent = text;
+            headRow.appendChild(th);
+        });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement("tbody");
+
+        (assignments || []).forEach(assignment => {
+            const row = document.createElement("tr");
+            row.className = "visibility-row";
+            row.dataset.assignmentId = assignment.assignment_id || "";
+
+            const checkCell = document.createElement("td");
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.className = "visibility-check assignment-visibility";
+            checkbox.checked = !!assignment.show_score_to_students;
+            checkCell.appendChild(checkbox);
+            row.appendChild(checkCell);
+
+            const titleCell = document.createElement("td");
+            const chapter = assignment.chapter_name ? assignment.chapter_name + " / " : "";
+            titleCell.textContent = chapter + (assignment.title || "-");
+            row.appendChild(titleCell);
+
+            const typeCell = document.createElement("td");
+            typeCell.className = "visibility-type";
+            typeCell.textContent = assignment.score_category_label || "-";
+            row.appendChild(typeCell);
+
+            tbody.appendChild(row);
+        });
+
+        [
+            { key: "midterm", label: "สอบกลางภาค", checked: !!(examVisibility && examVisibility.show_midterm_scores) },
+            { key: "final", label: "สอบปลายภาค", checked: !!(examVisibility && examVisibility.show_final_scores) }
+        ].forEach(examItem => {
+            const row = document.createElement("tr");
+            row.className = "visibility-row exam-visibility-row";
+            row.dataset.examType = examItem.key;
+
+            const checkCell = document.createElement("td");
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.className = "visibility-check exam-visibility";
+            checkbox.dataset.examType = examItem.key;
+            checkbox.checked = examItem.checked;
+            checkCell.appendChild(checkbox);
+            row.appendChild(checkCell);
+
+            const titleCell = document.createElement("td");
+            titleCell.textContent = examItem.label;
+            row.appendChild(titleCell);
+
+            const typeCell = document.createElement("td");
+            typeCell.className = "visibility-type";
+            typeCell.textContent = "คะแนนสอบ";
+            row.appendChild(typeCell);
+
+            tbody.appendChild(row);
+        });
+
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+        list.appendChild(wrap);
+        saveBtn.hidden = false;
+    }
+
+    async function loadScoreVisibility(showSuccessMessage) {
+        const classroom = document.getElementById("examClassroom").value.trim();
+        const btn = document.getElementById("loadVisibilityBtn");
+        const saveBtn = document.getElementById("saveVisibilityBtn");
+
+        if (!classroom || !teacherLineUserId) {
+            document.getElementById("visibilityList").innerHTML = "";
+            saveBtn.hidden = true;
+            loadedVisibilityAssignments = [];
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "กำลังโหลด...";
+
+        try {
+            const params = new URLSearchParams({
+                teacher_line_user_id: teacherLineUserId,
+                classroom: classroom
+            });
+            const res = await fetch("/api/teacher/score-visibility?" + params.toString());
+            const data = await res.json();
+            if (!data.success) {
+                showMessage(data.message || "โหลดรายการงานไม่สำเร็จ", "error");
+                return;
+            }
+
+            renderVisibilityList(data.assignments || [], data.exam_visibility || {});
+            if (showSuccessMessage) {
+                showMessage("โหลดรายการงานแล้ว", "success");
+            }
+        } catch (error) {
+            showMessage("โหลดการตั้งค่าแสดงคะแนนไม่สำเร็จ: " + error.message, "error");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "โหลดรายการงาน";
+        }
+    }
+
+    async function saveScoreVisibility() {
+        const filters = validateExamFilters();
+        const btn = document.getElementById("saveVisibilityBtn");
+        if (!filters) {
+            return;
+        }
+
+        const assignmentRows = Array.from(document.querySelectorAll("#visibilityList .visibility-row[data-assignment-id]"));
+        const assignments = assignmentRows.map(row => {
+            const checkbox = row.querySelector(".assignment-visibility");
+            return {
+                assignment_id: row.dataset.assignmentId,
+                show_score_to_students: checkbox ? checkbox.checked : false
+            };
+        });
+
+        const midtermCheckbox = document.querySelector('#visibilityList .exam-visibility[data-exam-type="midterm"]');
+        const finalCheckbox = document.querySelector('#visibilityList .exam-visibility[data-exam-type="final"]');
+
+        btn.disabled = true;
+        btn.innerText = "กำลังบันทึก...";
+
+        try {
+            const res = await fetch("/api/teacher/score-visibility", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    teacher_line_user_id: teacherLineUserId,
+                    classroom: filters.classroom,
+                    assignments: assignments,
+                    show_midterm_scores: midtermCheckbox ? midtermCheckbox.checked : false,
+                    show_final_scores: finalCheckbox ? finalCheckbox.checked : false
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                renderVisibilityList(data.assignments || [], data.exam_visibility || {});
+                showMessage(data.message || "บันทึกการแสดงคะแนนเรียบร้อยแล้ว", "success");
+            } else {
+                showMessage(data.message || "บันทึกการแสดงคะแนนไม่สำเร็จ", "error");
+            }
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "บันทึกการแสดงคะแนน";
+        }
+    }
+    async function loadExamScores() {
+        const filters = validateExamFilters();
+        const btn = document.getElementById("loadExamBtn");
+        if (!filters) {
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "กำลังโหลด...";
+
+        try {
+            const params = new URLSearchParams({
+                teacher_line_user_id: teacherLineUserId,
+                classroom: filters.classroom
+            });
+            const res = await fetch("/api/teacher/exam-scores?" + params.toString());
+            const data = await res.json();
+
+            if (!data.success) {
+                showMessage(data.message || "โหลดคะแนนสอบไม่สำเร็จ", "error");
+                return;
+            }
+
+            loadedExamStudents = data.students || [];
+            renderExamStudents(loadedExamStudents);
+            showMessage("โหลดรายชื่อนักเรียนแล้ว", "success");
+
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "โหลดรายชื่อนักเรียน";
+        }
+    }
+
+    async function saveExamScores() {
+        const filters = validateExamFilters();
+        const btn = document.getElementById("saveExamBtn");
+        if (!filters) {
+            return;
+        }
+
+        const rows = Array.from(document.querySelectorAll("#examList .exam-row"));
+        const students = [];
+
+        for (const row of rows) {
+            const midtermInput = row.querySelector(".midterm-score");
+            const finalInput = row.querySelector(".final-score");
+            const midtermScore = midtermInput ? midtermInput.value.trim() : "";
+            const finalScore = finalInput ? finalInput.value.trim() : "";
+            const midtermValue = midtermScore === "" ? null : Number(midtermScore);
+            const finalValue = finalScore === "" ? null : Number(finalScore);
+
+            if (midtermValue !== null && (!Number.isFinite(midtermValue) || midtermValue < 0 || midtermValue > 20)) {
+                showMessage("คะแนนกลางภาคต้องอยู่ระหว่าง 0-20", "error");
+                return;
+            }
+
+            if (finalValue !== null && (!Number.isFinite(finalValue) || finalValue < 0 || finalValue > 20)) {
+                showMessage("คะแนนปลายภาคต้องอยู่ระหว่าง 0-20", "error");
+                return;
+            }
+
+            students.push({
+                student_line_user_id: row.dataset.studentId,
+                student_name: row.dataset.studentName,
+                student_code: row.dataset.studentCode,
+                midterm_score: midtermScore,
+                final_score: finalScore
+            });
+        }
+
+        if (!students.length) {
+            showMessage("ยังไม่มีรายชื่อนักเรียนสำหรับบันทึกคะแนน", "error");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "กำลังบันทึก...";
+
+        try {
+            const res = await fetch("/api/teacher/exam-scores", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    teacher_line_user_id: teacherLineUserId,
+                    classroom: filters.classroom,
+                    students: students
+                })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                showMessage(data.message || "บันทึกคะแนนสอบเรียบร้อยแล้ว", "success");
+            } else {
+                showMessage(data.message || "บันทึกคะแนนสอบไม่สำเร็จ", "error");
+            }
+
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "บันทึกคะแนนสอบ";
+        }
+    }
+
     main();
 </script>
 
 </body>
 </html>
+
+
+
+
+
+
+
+
