@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>คะแนนและการมาเรียน</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: Arial, "Tahoma", sans-serif;
+            background: #eef2f7;
+            margin: 0;
+            padding: 16px;
+            color: #222;
+        }
+        .container {
+            max-width: 560px;
+            margin: 0 auto;
+            background: #ffffff;
+            border: 1px solid #dbe3ee;
+            border-radius: 8px;
+            padding: 22px;
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+        }
+        h1 {
+            font-size: 24px;
+            margin: 0 0 8px;
+            text-align: center;
+            color: #1554d1;
+        }
+        .subtitle {
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 18px;
+            line-height: 1.5;
+        }
+        .view-tabs {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+            margin: 14px 0 16px;
+        }
+        .view-tab {
+            width: 100%;
+            min-height: 44px;
+            margin: 0;
+            padding: 10px;
+            border: 1px solid #c8d9ff;
+            background: #f6f8ff;
+            color: #2450a4;
+            font-size: 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s ease;
+        }
+        .view-tab.active {
+            background: #1554d1;
+            color: #ffffff;
+            border-color: #1554d1;
+        }
+        .view-tab:hover {
+            background: #e8f0ff;
+        }
+        .view-tab.active:hover {
+            background: #1554d1;
+        }
+        .mode-panel[hidden] {
+            display: none;
+        }
+        .message {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 8px;
+            display: none;
+            font-size: 15px;
+            line-height: 1.5;
+            white-space: pre-line;
+        }
+        .success {
+            background: #e8f8ee;
+            color: #137333;
+            border: 1px solid #bde8ca;
+        }
+        .error {
+            background: #fdeaea;
+            color: #b3261e;
+            border: 1px solid #f4b4b4;
+        }
+        .info {
+            background: #eef4ff;
+            color: #2450a4;
+            border: 1px solid #c8d9ff;
+        }
+        .score-summary {
+            margin-top: 16px;
+            padding: 14px;
+            border-radius: 8px;
+            background: #f6f8ff;
+            border: 1px solid #c8d9ff;
+        }
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            font-size: 14px;
+        }
+        .summary-label {
+            color: #666;
+        }
+        .summary-value {
+            font-weight: bold;
+            color: #1554d1;
+        }
+        .score-card {
+            border: 1px solid #d6dbe6;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 12px;
+            background: #fbfcff;
+        }
+        .card-title {
+            font-weight: bold;
+            color: #1f2937;
+            margin-bottom: 6px;
+        }
+        .card-meta {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+        .score-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 14px;
+        }
+        .score-row:last-child {
+            border-bottom: none;
+        }
+        .score-label {
+            color: #555;
+        }
+        .score-value {
+            font-weight: bold;
+            color: #1554d1;
+        }
+        .attendance-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            margin-top: 12px;
+        }
+        .attendance-table th {
+            background: #f0f4ff;
+            padding: 8px;
+            text-align: left;
+            font-weight: bold;
+            color: #1554d1;
+            border-bottom: 2px solid #1554d1;
+        }
+        .attendance-table td {
+            padding: 8px;
+            border-bottom: 1px solid #dbe3ee;
+        }
+        .attendance-table tr:nth-child(even) {
+            background: #fafbff;
+        }
+        .status-present { color: #137333; font-weight: bold; }
+        .status-absent { color: #b3261e; font-weight: bold; }
+        .status-late { color: #915b00; font-weight: bold; }
+        .status-leave { color: #667085; }
+        button {
+            width: 100%;
+            margin-top: 14px;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background: #1554d1;
+            color: #ffffff;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        button:hover {
+            background: #0d3fa3;
+        }
+        button:disabled {
+            background: #9aa9d6;
+            cursor: not-allowed;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 24px;
+            color: #666;
+            font-size: 14px;
+        }
+        .unlock-hint {
+            margin-top: 12px;
+            padding: 12px;
+            background: #fff7df;
+            border: 1px solid #f5d982;
+            border-radius: 6px;
+            color: #915b00;
+            font-size: 13px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>คะแนนและการมาเรียน</h1>
+    <div class="subtitle">ดูคะแนนและการมาเรียนของคุณ</div>
+
+    <div class="view-tabs" role="tablist">
+        <button type="button" id="summaryTab" class="view-tab active" onclick="setMode('summary')">สรุป</button>
+        <button type="button" id="scoresTab" class="view-tab" onclick="setMode('scores')">คะแนน</button>
+        <button type="button" id="attendanceTab" class="view-tab" onclick="setMode('attendance')">การมาเรียน</button>
+    </div>
+
+    <section id="summaryPanel" class="mode-panel">
+        <div id="summaryContent"></div>
+    </section>
+
+    <section id="scoresPanel" class="mode-panel" hidden>
+        <div id="scoresContent"></div>
+        <button id="downloadScoresBtn" onclick="downloadScores()">📥 โหลดคะแนน (CSV)</button>
+    </section>
+
+    <section id="attendancePanel" class="mode-panel" hidden>
+        <div id="attendanceContent"></div>
+        <button id="downloadAttendanceBtn" onclick="downloadAttendance()">📥 โหลดการมาเรียน (CSV)</button>
+    </section>
+
+    <div id="messageBox" class="message"></div>
+</div>
+
+<script>
+    const RAW_LIFF_ID = "{{ liff_id }}";
+    const LIFF_ID = String(RAW_LIFF_ID || "").trim().replace("https://liff.line.me/", "");
+    let studentLineUserId = "";
+    let classroom = "";
+    let scoresData = null;
+    let attendanceData = null;
+
+    async function main() {
+        try {
+            await liff.init({ liffId: LIFF_ID });
+
+            if (!liff.isLoggedIn()) {
+                liff.login();
+                return;
+            }
+
+            const profile = await liff.getProfile();
+            studentLineUserId = profile.userId;
+
+            await loadScoresData();
+
+        } catch (error) {
+            showMessage("เปิด LIFF ไม่สำเร็จ: " + error.message, "error");
+        }
+    }
+
+    function showMessage(text, type) {
+        const box = document.getElementById("messageBox");
+        box.innerText = text;
+        box.className = "message " + type;
+        box.style.display = "block";
+    }
+
+    function setMode(mode) {
+        const modes = ["summary", "scores", "attendance"];
+        modes.forEach(m => {
+            document.getElementById(m + "Panel").hidden = m !== mode;
+            document.getElementById(m + "Tab").classList.toggle("active", m === mode);
+        });
+    }
+
+    async function loadScoresData() {
+        try {
+            const res = await fetch("/api/student/scores?student_line_user_id=" + encodeURIComponent(studentLineUserId));
+            const data = await res.json();
+
+            if (!data.success) {
+                showMessage(data.message || "โหลดข้อมูลไม่สำเร็จ", "error");
+                renderEmpty();
+                return;
+            }
+
+            scoresData = data;
+            classroom = data.classroom || "";
+            renderSummary();
+            renderScores();
+            await loadAttendanceData();
+
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+            renderEmpty();
+        }
+    }
+
+    async function loadAttendanceData() {
+        try {
+            const res = await fetch("/api/student/attendance?student_line_user_id=" + encodeURIComponent(studentLineUserId) + "&classroom=" + encodeURIComponent(classroom));
+            const data = await res.json();
+
+            if (data.success) {
+                attendanceData = data;
+                renderAttendance();
+            }
+
+        } catch (error) {
+            console.error("Load attendance error:", error);
+        }
+    }
+
+    function renderEmpty() {
+        document.getElementById("summaryContent").innerHTML = "<div class='empty-state'>ไม่สามารถโหลดข้อมูลได้</div>";
+        document.getElementById("scoresContent").innerHTML = "<div class='empty-state'>ไม่สามารถโหลดข้อมูลได้</div>";
+        document.getElementById("attendanceContent").innerHTML = "<div class='empty-state'>ไม่สามารถโหลดข้อมูลได้</div>";
+    }
+
+    function renderSummary() {
+        const html = scoresData.summary ? `
+            <div class="score-summary">
+                <div class="summary-item">
+                    <span class="summary-label">ห้อง:</span>
+                    <span class="summary-value">${classroom}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">ชื่อ-นามสกุล:</span>
+                    <span class="summary-value">${scoresData.student_name || "-"}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">เลขที่:</span>
+                    <span class="summary-value">${scoresData.student_code || "-"}</span>
+                </div>
+                <div style="margin-top: 12px; border-top: 1px solid #c8d9ff; padding-top: 12px;">
+                    ${Object.entries(scoresData.summary).map(([category, score]) => `
+                        <div class="summary-item">
+                            <span class="summary-label">${getCategoryName(category)}:</span>
+                            <span class="summary-value">${score || "ไม่มี"}</span>
+                        </div>
+                    `).join("")}
+                </div>
+            </div>
+        ` : "<div class='unlock-hint'>⚠️ ครูยังไม่เปิดให้ดูคะแนน</div>";
+
+        document.getElementById("summaryContent").innerHTML = html;
+    }
+
+    function renderScores() {
+        if (!scoresData.scores || scoresData.scores.length === 0) {
+            document.getElementById("scoresContent").innerHTML = "<div class='unlock-hint'>⚠️ ครูยังไม่เปิดให้ดูคะแนนหรือยังไม่มีคะแนน</div>";
+            return;
+        }
+
+        const html = scoresData.scores.map(score => `
+            <div class="score-card">
+                <div class="card-title">${score.title || "ไม่มีชื่อ"}</div>
+                <div class="card-meta">
+                    บท: ${score.chapter_name || "-"} | ประเภท: ${score.score_category_label || "-"}
+                </div>
+                <div class="score-row">
+                    <span class="score-label">สถานะ:</span>
+                    <span class="score-value">${score.submission_status || "ยังไม่ส่ง"}</span>
+                </div>
+                <div class="score-row">
+                    <span class="score-label">คะแนน:</span>
+                    <span class="score-value">${score.score !== undefined && score.score !== null ? score.score + (score.max_score ? " / " + score.max_score : "") : "รอตรวจ"}</span>
+                </div>
+                ${score.teacher_comment ? `
+                    <div class="score-row">
+                        <span class="score-label">คอมเมนต์:</span>
+                    </div>
+                    <div style="padding: 6px 0; font-size: 13px; color: #333; font-style: italic;">${score.teacher_comment}</div>
+                ` : ""}
+            </div>
+        `).join("");
+
+        document.getElementById("scoresContent").innerHTML = html;
+    }
+
+    function renderAttendance() {
+        if (!attendanceData || !attendanceData.attendance || attendanceData.attendance.length === 0) {
+            document.getElementById("attendanceContent").innerHTML = "<div class='empty-state'>ยังไม่มีข้อมูลการมาเรียน</div>";
+            return;
+        }
+
+        const html = `
+            <table class="attendance-table">
+                <thead>
+                    <tr>
+                        <th>วันที่</th>
+                        <th>สถานะ</th>
+                        <th>หมายเหตุ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${attendanceData.attendance.map(att => `
+                        <tr>
+                            <td>${att.date || "-"}</td>
+                            <td><span class="status-${att.status_class || "present"}">${att.status || "-"}</span></td>
+                            <td>${att.note || "-"}</td>
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>
+        `;
+
+        document.getElementById("attendanceContent").innerHTML = html;
+    }
+
+    function getCategoryName(category) {
+        const names = {
+            "quiz": "สอบเก็บคะแนน",
+            "assignment": "ใบงาน",
+            "notebook": "คะแนนสมุด",
+            "midterm": "สอบกลางภาค",
+            "final": "สอบปลายภาค"
+        };
+        return names[category] || category;
+    }
+
+    function downloadScores() {
+        if (!scoresData || !scoresData.scores) {
+            showMessage("ไม่มีข้อมูลที่จะโหลด", "error");
+            return;
+        }
+
+        const lines = [
+            ["ห้อง", classroom],
+            ["ชื่อ-นามสกุล", scoresData.student_name || ""],
+            ["เลขที่", scoresData.student_code || ""],
+            [],
+            ["งาน", "บท", "ประเภท", "สถานะ", "คะแนน", "คอมเมนต์"]
+        ];
+
+        scoresData.scores.forEach(score => {
+            lines.push([
+                score.title || "",
+                score.chapter_name || "",
+                score.score_category_label || "",
+                score.submission_status || "",
+                score.score ? (score.score + (score.max_score ? "/" + score.max_score : "")) : "รอตรวจ",
+                score.teacher_comment || ""
+            ]);
+        });
+
+        downloadCSV(lines, "คะแนน_" + classroom + "_" + (scoresData.student_code || ""));
+    }
+
+    function downloadAttendance() {
+        if (!attendanceData || !attendanceData.attendance) {
+            showMessage("ไม่มีข้อมูลที่จะโหลด", "error");
+            return;
+        }
+
+        const lines = [
+            ["ห้อง", classroom],
+            ["ชื่อ-นามสกุล", scoresData.student_name || ""],
+            ["เลขที่", scoresData.student_code || ""],
+            [],
+            ["วันที่", "สถานะ", "หมายเหตุ"]
+        ];
+
+        attendanceData.attendance.forEach(att => {
+            lines.push([
+                att.date || "",
+                att.status || "",
+                att.note || ""
+            ]);
+        });
+
+        downloadCSV(lines, "การมาเรียน_" + classroom + "_" + (scoresData.student_code || ""));
+    }
+
+    function downloadCSV(lines, filename) {
+        const csv = lines.map(line =>
+            line.map(cell => {
+                const text = String(cell || "").replace(/"/g, '""');
+                return text.includes(",") || text.includes("\n") ? `"${text}"` : text;
+            }).join(",")
+        ).join("\n");
+
+        const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = filename + "_" + new Date().toISOString().split("T")[0] + ".csv";
+        link.click();
+        showMessage("โหลดเสร็จแล้ว", "success");
+    }
+
+    main();
+</script>
+
+</body>
+</html>

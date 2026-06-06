@@ -14,7 +14,7 @@
 
         body {
             font-family: Arial, "Tahoma", sans-serif;
-            background: #f4f7fb;
+            background: #eef2f7;
             margin: 0;
             padding: 16px;
             color: #222;
@@ -24,14 +24,15 @@
             max-width: 560px;
             margin: 0 auto;
             background: #ffffff;
-            border-radius: 18px;
+            border: 1px solid #dbe3ee;
+            border-radius: 8px;
             padding: 22px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
         }
 
         h1 {
             text-align: center;
-            color: #1f5eff;
+            color: #1554d1;
             font-size: 24px;
             margin: 0 0 8px;
         }
@@ -48,7 +49,7 @@
             background: #eef4ff;
             border: 1px solid #c8d9ff;
             color: #2450a4;
-            border-radius: 12px;
+            border-radius: 8px;
             padding: 12px;
             font-size: 14px;
             line-height: 1.6;
@@ -67,15 +68,32 @@
             width: 100%;
             padding: 13px 14px;
             border: 1px solid #d6dbe6;
-            border-radius: 12px;
+            border-radius: 8px;
             font-size: 16px;
             background: #fbfcff;
             outline: none;
         }
 
         input:focus {
-            border-color: #1f5eff;
+            border-color: #1554d1;
             background: #ffffff;
+        }
+
+        .field-invalid {
+            border-color: #b3261e !important;
+            background: #fff8f7 !important;
+        }
+
+        .field-error {
+            display: none;
+            color: #b3261e;
+            font-size: 13px;
+            line-height: 1.4;
+            margin-top: 5px;
+        }
+
+        .field-error.show {
+            display: block;
         }
 
         .small {
@@ -90,8 +108,8 @@
             margin-top: 22px;
             padding: 14px;
             border: none;
-            border-radius: 14px;
-            background: #1f5eff;
+            border-radius: 8px;
+            background: #1554d1;
             color: #fff;
             font-size: 17px;
             font-weight: bold;
@@ -106,7 +124,7 @@
         .message {
             margin-top: 16px;
             padding: 12px;
-            border-radius: 12px;
+            border-radius: 8px;
             display: none;
             font-size: 15px;
             line-height: 1.5;
@@ -124,6 +142,12 @@
             color: #b3261e;
             border: 1px solid #f4b4b4;
         }
+
+        .info {
+            background: #eef4ff;
+            color: #2450a4;
+            border: 1px solid #c8d9ff;
+        }
     </style>
 </head>
 <body>
@@ -139,32 +163,40 @@
         <b>ตัวอย่างการกรอก</b><br>
         ชื่อ-สกุล: เด็กชายสมชาย ใจดี<br>
         เลขที่ : 12<br>
-        ห้องเรียน: 401
+        ห้องเรียน: 401 หรือ 4/1
     </div>
 
     <label for="fullName">ชื่อ-สกุล</label>
     <input
         type="text"
         id="fullName"
+        maxlength="80"
+        autocomplete="name"
         placeholder="ตัวอย่าง: เด็กชายสมชาย ใจดี"
     >
+    <div id="fullNameError" class="field-error"></div>
 
     <label for="studentCode">เลขที่ / รหัสนักเรียน</label>
     <input
         type="text"
         id="studentCode"
+        maxlength="20"
+        inputmode="numeric"
         placeholder="ตัวอย่าง: 12"
     >
+    <div id="studentCodeError" class="field-error"></div>
 
     <label for="classroom">ห้องเรียน</label>
     <input
         type="text"
         id="classroom"
-        placeholder="ตัวอย่าง: 401"
+        maxlength="20"
+        placeholder="ตัวอย่าง: 401 หรือ 4/1"
     >
-    <div class="small">ตัวอย่าง: 401</div>
+    <div id="classroomError" class="field-error"></div>
+    <div class="small">ตัวอย่าง: 401 หรือ 4/1</div>
 
-    <button id="saveBtn" onclick="registerStudent()">
+    <button type="button" id="saveBtn" onclick="registerStudent()">
         บันทึกการลงทะเบียน
     </button>
 
@@ -173,15 +205,24 @@
 
 <script>
     const RAW_LIFF_ID = "{{ liff_id }}";
-    const LIFF_ID = String(RAW_LIFF_ID || "").trim().replace("https://liff.line.me/", "");
+    const LIFF_ID = String(RAW_LIFF_ID || "")
+        .trim()
+        .replace("https://liff.line.me/", "")
+        .replace("http://liff.line.me/", "");
+
     let lineUserId = "";
 
     async function main() {
         try {
+            if (!LIFF_ID || LIFF_ID.includes("{")) {
+                showMessage("ยังไม่ได้ตั้งค่า LIFF ID สำหรับหน้าลงทะเบียน", "error");
+                return;
+            }
+
             await liff.init({ liffId: LIFF_ID });
 
-            if (!liff.isLoggedIn()) {
-                liff.login();
+            if (!liff.isInClient() && !liff.isLoggedIn()) {
+                liff.login({ redirectUri: window.location.href });
                 return;
             }
 
@@ -200,11 +241,47 @@
         box.style.display = "block";
     }
 
+    function setFieldError(fieldId, message) {
+        const field = document.getElementById(fieldId);
+        const error = document.getElementById(fieldId + "Error");
+        if (field) {
+            field.classList.add("field-invalid");
+        }
+        if (error) {
+            error.innerText = message;
+            error.classList.add("show");
+        }
+    }
+
+    function clearFieldError(fieldId) {
+        const field = document.getElementById(fieldId);
+        const error = document.getElementById(fieldId + "Error");
+        if (field) {
+            field.classList.remove("field-invalid");
+        }
+        if (error) {
+            error.innerText = "";
+            error.classList.remove("show");
+        }
+    }
+
+    function clearFormErrors() {
+        ["fullName", "studentCode", "classroom"].forEach(clearFieldError);
+    }
+
+    ["fullName", "studentCode", "classroom"].forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (field) {
+            field.addEventListener("input", () => clearFieldError(fieldId));
+        }
+    });
+
     async function registerStudent() {
         const fullName = document.getElementById("fullName").value.trim();
         const studentCode = document.getElementById("studentCode").value.trim();
         const classroom = document.getElementById("classroom").value.trim();
         const btn = document.getElementById("saveBtn");
+        clearFormErrors();
 
         if (!lineUserId) {
             showMessage("ไม่พบ LINE userId กรุณาปิดแล้วเปิดใหม่", "error");
@@ -212,16 +289,31 @@
         }
 
         if (!fullName) {
+            setFieldError("fullName", "กรุณากรอกชื่อ-สกุล");
             showMessage("กรุณากรอกชื่อ-สกุล", "error");
             return;
         }
 
+        if (fullName.length < 2) {
+            setFieldError("fullName", "กรุณากรอกชื่อให้ครบถ้วน");
+            showMessage("กรุณากรอกชื่อให้ครบถ้วน", "error");
+            return;
+        }
+
         if (!studentCode) {
-            showMessage("กรุณากรอกเลขที่ ", "error");
+            setFieldError("studentCode", "กรุณากรอกเลขที่ / รหัสนักเรียน");
+            showMessage("กรุณากรอกเลขที่", "error");
+            return;
+        }
+
+        if (!/^[0-9A-Za-zก-๙\-\/]+$/.test(studentCode)) {
+            setFieldError("studentCode", "เลขที่ / รหัสนักเรียนมีอักขระที่ไม่รองรับ");
+            showMessage("เลขที่ / รหัสนักเรียนมีอักขระที่ไม่รองรับ", "error");
             return;
         }
 
         if (!classroom) {
+            setFieldError("classroom", "กรุณากรอกห้องเรียน");
             showMessage("กรุณากรอกห้องเรียน", "error");
             return;
         }
@@ -236,8 +328,8 @@
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                    line_user_id: lineUserId,
-                    full_name: fullName,
+                    student_line_user_id: lineUserId,
+                    student_name: fullName,
                     student_code: studentCode,
                     classroom: classroom
                 })

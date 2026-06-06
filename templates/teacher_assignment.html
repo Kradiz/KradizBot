@@ -4,36 +4,31 @@
     <meta charset="UTF-8">
     <title>สั่งงาน</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-
     <style>
         * { box-sizing: border-box; }
-
         body {
             font-family: Arial, "Tahoma", sans-serif;
-            background: #f4f7fb;
+            background: #eef2f7;
             margin: 0;
             padding: 16px;
             color: #222;
         }
-
         .container {
             max-width: 560px;
             margin: 0 auto;
             background: #ffffff;
-            border-radius: 18px;
+            border: 1px solid #dbe3ee;
+            border-radius: 8px;
             padding: 22px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
         }
-
         h1 {
             text-align: center;
-            color: #1f5eff;
+            color: #1554d1;
             font-size: 24px;
             margin: 0 0 8px;
         }
-
         .subtitle {
             text-align: center;
             color: #666;
@@ -41,18 +36,16 @@
             line-height: 1.5;
             margin-bottom: 18px;
         }
-
         .hint {
             background: #eef4ff;
             border: 1px solid #c8d9ff;
             color: #2450a4;
-            border-radius: 12px;
+            border-radius: 8px;
             padding: 12px;
             font-size: 14px;
             line-height: 1.6;
             margin-bottom: 16px;
         }
-
         label {
             display: block;
             margin-top: 14px;
@@ -60,120 +53,302 @@
             font-weight: bold;
             font-size: 15px;
         }
-
-        input,
-        select,
-        textarea {
+        input, select, textarea {
             width: 100%;
             padding: 13px 14px;
             border: 1px solid #d6dbe6;
-            border-radius: 12px;
+            border-radius: 8px;
             font-size: 16px;
             background: #fbfcff;
             outline: none;
         }
-
         textarea {
             min-height: 110px;
             resize: vertical;
             line-height: 1.5;
         }
-
-        input:focus,
-        select:focus,
-        textarea:focus {
-            border-color: #1f5eff;
+        input:focus, select:focus, textarea:focus {
+            border-color: #1554d1;
             background: #ffffff;
         }
-
+        .field-invalid {
+            border-color: #b3261e !important;
+            background: #fff8f7 !important;
+        }
+        .field-error {
+            display: none;
+            color: #b3261e;
+            font-size: 13px;
+            line-height: 1.4;
+            margin-top: 5px;
+        }
+        .field-error.show { display: block; }
         .small {
             font-size: 13px;
             color: #777;
             margin-top: 5px;
             line-height: 1.5;
         }
-
+        .view-tab {
+            transition: all 0.2s ease;
+        }
+        .view-tab:hover {
+            background-color: #f0f0f0;
+        }
+        .edit-item {
+            margin-top: 12px;
+            padding: 12px;
+            border: 1px solid #d6dbe6;
+            border-radius: 8px;
+            background: #fbfcff;
+        }
+        .edit-item-title {
+            font-weight: bold;
+            color: #1f2937;
+            margin-bottom: 8px;
+        }
+        .edit-item-meta {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        .edit-item-weight {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+        .edit-item-weight input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #d6dbe6;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .edit-item-weight button {
+            flex: 0 0 auto;
+            width: auto;
+            padding: 10px 16px;
+            margin-top: 0;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 24px;
+            color: #666;
+            font-size: 14px;
+        }
+        .type-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .type-grid.field-invalid {
+            outline: 1px solid #b3261e;
+            outline-offset: 2px;
+            border-radius: 8px;
+            padding: 4px;
+            background: #fff8f7;
+        }
+        .type-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0;
+            padding: 12px;
+            border: 1px solid #d6dbe6;
+            border-radius: 8px;
+            background: #fbfcff;
+            font-size: 15px;
+            font-weight: normal;
+            cursor: pointer;
+        }
+        .type-option input {
+            width: auto;
+            margin: 0;
+            padding: 0;
+            border: none;
+            background: transparent;
+        }
+        .type-option.active {
+            border-color: #1554d1;
+            background: #e8f0ff;
+        }
+        .section-panel[hidden] { display: none; }
+        .file-type-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .file-type-grid.field-invalid, .check-option.field-invalid {
+            outline: 1px solid #b3261e;
+            outline-offset: 2px;
+            background: #fff8f7;
+        }
+        .check-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 42px;
+            margin: 0;
+            padding: 10px;
+            border: 1px solid #d6dbe6;
+            border-radius: 8px;
+            background: #fbfcff;
+            font-size: 14px;
+            font-weight: normal;
+            line-height: 1.35;
+        }
+        .check-option input {
+            width: auto;
+            margin: 0;
+            padding: 0;
+            border: none;
+            background: transparent;
+            flex: 0 0 auto;
+        }
+        .link-option { margin-top: 8px; }
         button {
             width: 100%;
             margin-top: 22px;
             padding: 14px;
             border: none;
-            border-radius: 14px;
-            background: #1f5eff;
+            border-radius: 8px;
+            background: #1554d1;
             color: #fff;
             font-size: 17px;
             font-weight: bold;
             cursor: pointer;
         }
-
         button:disabled {
             background: #9aa9d6;
             cursor: not-allowed;
         }
-
         .message {
             margin-top: 16px;
             padding: 12px;
-            border-radius: 12px;
+            border-radius: 8px;
             display: none;
             font-size: 15px;
             line-height: 1.5;
             white-space: pre-line;
         }
-
-        .success {
-            background: #e8f8ee;
-            color: #137333;
-            border: 1px solid #bde8ca;
-        }
-
-        .error {
-            background: #fdeaea;
-            color: #b3261e;
-            border: 1px solid #f4b4b4;
-        }
+        .success { background: #e8f8ee; color: #137333; border: 1px solid #bde8ca; }
+        .error { background: #fdeaea; color: #b3261e; border: 1px solid #f4b4b4; }
     </style>
 </head>
 <body>
-
 <div class="container">
     <h1>สั่งงาน</h1>
-    <div class="subtitle">
-        ใช้สำหรับสร้างงานใหม่ให้ห้องที่ครูดูแล
+
+    <div class="view-tabs" role="tablist" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0 0 16px;">
+        <button type="button" id="createTab" class="view-tab active" style="padding: 10px; border: 1px solid #c8d9ff; background: #1554d1; color: white; border-radius: 8px; cursor: pointer; font-weight: bold;" onclick="setMode('create')">สั่งงานใหม่</button>
+        <button type="button" id="editTab" class="view-tab" style="padding: 10px; border: 1px solid #c8d9ff; background: #f6f8ff; color: #2450a4; border-radius: 8px; cursor: pointer; font-weight: bold;" onclick="setMode('edit')">แก้ไขน้ำหนัก</button>
     </div>
 
-    <div class="hint">
-        <b>ตัวอย่างการกรอก</b><br>
-        เลือกห้อง: 401<br>
-        ชื่องาน: ใบงานที่ 1 เรื่องแรงและการเคลื่อนที่<br>
-        รายละเอียดงาน: ทำข้อ 1-10 แล้วถ่ายรูปหรือส่งเป็น PDF<br>
-        วันเริ่มส่ง: 2026-05-16<br>
-        วันสิ้นสุด: 2026-05-20<br>
-        คะแนนเต็ม: 10
+    <div id="createPanel" class="section-panel">
+        <div class="subtitle">เลือกบทก่อน แล้วกำหนดประเภทงานในบทนั้น</div>
+
+        <div class="hint">
+            <b>ขั้นตอน</b><br>
+            1. เลือกห้องและกรอกชื่อบท เช่น บทที่ 1 แรงและการเคลื่อนที่<br>
+            2. เลือกประเภท: ใบงาน / สอบเก็บคะแนน / คะแนนสมุด<br>
+            3. กรอกรายละเอียดและบันทึก<br>
+            ถ้าเลือก <b>สอบเก็บคะแนน</b> ระบบจะพาไปหน้ากรอกคะแนนนักเรียนทันที
+        </div>
+
+        <label for="classroom">เลือกห้อง</label>
+        <select id="classroom">
+            <option value="">กำลังโหลดห้อง...</option>
+        </select>
+        <div id="classroomError" class="field-error"></div>
+
+        <label for="chapterName">ชื่อบท</label>
+        <input type="text" id="chapterName" list="chapterSuggestions" maxlength="120" placeholder="ตัวอย่าง: บทที่ 1 แรงและการเคลื่อนที่">
+        <datalist id="chapterSuggestions"></datalist>
+        <div id="chapterNameError" class="field-error"></div>
+        <div class="small">ถ้าเคยสั่งงานในบทนี้แล้ว สามารถเลือกชื่อบทเดิมจากรายการได้</div>
+
+        <label>ประเภทงานในบทนี้</label>
+        <div class="type-grid" id="taskTypeOptions">
+            <label class="type-option active">
+                <input type="radio" name="taskType" value="assignment" checked>
+                ใบงาน (นักเรียนส่งไฟล์/ลิงก์)
+            </label>
+            <label class="type-option">
+                <input type="radio" name="taskType" value="quiz">
+                สอบเก็บคะแนน (ครูกรอกคะแนนในตาราง)
+            </label>
+            <label class="type-option">
+                <input type="radio" name="taskType" value="notebook">
+                คะแนนสมุด (นักเรียนส่งไฟล์/ลิงก์ เหมือนใบงาน)
+            </label>
+        </div>
+        <div id="taskTypeOptionsError" class="field-error"></div>
+
+        <div id="assignmentPanel" class="section-panel">
+            <label for="workTitle">ชื่อใบงาน</label>
+            <input type="text" id="workTitle" maxlength="120" placeholder="ตัวอย่าง: ใบงานที่ 1">
+            <div id="workTitleError" class="field-error"></div>
+
+            <label for="description">รายละเอียดงาน</label>
+            <textarea id="description" maxlength="1000" placeholder="ตัวอย่าง: ทำข้อ 1-10 แล้วถ่ายรูปหรือส่งเป็น PDF"></textarea>
+
+            <label for="startDate">วันเริ่มส่ง</label>
+            <input type="date" id="startDate">
+            <div id="startDateError" class="field-error"></div>
+
+            <label for="dueDate">วันสิ้นสุด</label>
+            <input type="date" id="dueDate">
+            <div id="dueDateError" class="field-error"></div>
+
+            <label for="dueTime">เวลาสิ้นสุด</label>
+            <input type="time" id="dueTime" value="23:59">
+            <div id="dueTimeError" class="field-error"></div>
+
+            <label>ประเภทไฟล์ที่อนุญาตให้นักเรียนส่ง</label>
+            <div class="file-type-grid" id="fileTypeOptions">
+                <label class="check-option"><input type="checkbox" name="allowedFileType" value="image" checked> รูปภาพ</label>
+                <label class="check-option"><input type="checkbox" name="allowedFileType" value="pdf" checked> PDF</label>
+                <label class="check-option"><input type="checkbox" name="allowedFileType" value="word" checked> Word</label>
+                <label class="check-option"><input type="checkbox" name="allowedFileType" value="excel" checked> Excel</label>
+                <label class="check-option"><input type="checkbox" name="allowedFileType" value="powerpoint" checked> PowerPoint</label>
+                <label class="check-option"><input type="checkbox" name="allowedFileType" value="video" checked> วิดีโอ</label>
+                <label class="check-option"><input type="checkbox" name="allowedFileType" value="archive" checked> ZIP / RAR</label>
+            </div>
+            <label class="check-option link-option">
+                <input type="checkbox" id="allowLinkSubmission" checked>
+                อนุญาตให้ส่งเป็นลิงก์
+            </label>
+            <div id="fileTypeOptionsError" class="field-error"></div>
+        </div>
+
+        <div id="scorePanel" class="section-panel">
+            <label for="scoreWeight">น้ำหนักคะแนน (ในคะแนนเก็บ 60)</label>
+            <input type="number" id="scoreWeight" placeholder="ตัวอย่าง: 5 หรือ 0 ถ้าไม่นับคะแนน" min="0" max="60" step="0.01" inputmode="decimal" value="0" required>
+            <div id="scoreWeightError" class="field-error"></div>
+            <div class="small">ใส่ <b>0</b> = ไม่นำงานนี้ไปคิดในคะแนนเก็บ 60 (ยังบันทึก/แสดงคะแนนได้ตามปกติ)</div>
+
+            <label for="maxScore">คะแนนเต็มของงานนี้</label>
+            <input type="number" id="maxScore" placeholder="ตัวอย่าง: 10" min="0.01" max="1000" step="0.01" inputmode="decimal">
+            <div id="maxScoreError" class="field-error"></div>
+            <div class="small">ใช้บันทึกและแสดงคะแนนที่นักเรียนได้ (เช่น ได้ 8 จากเต็ม 10) แม้น้ำหนักเป็น 0</div>
+        </div>
+
+        <button type="button" id="saveBtn" onclick="saveAssignment()">บันทึกงาน</button>
     </div>
 
-    <label for="classroom">เลือกห้อง</label>
-    <select id="classroom">
-        <option value="">กำลังโหลดห้อง...</option>
-    </select>
+    <div id="editPanel" class="section-panel" hidden>
+        <div class="subtitle">เลือกห้องและแก้ไขน้ำหนักคะแนนของงาน</div>
 
-    <label for="title">ชื่องาน</label>
-    <input type="text" id="title" placeholder="ตัวอย่าง: ใบงานที่ 1 เรื่องแรงและการเคลื่อนที่">
+        <label for="classroomEdit">เลือกห้อง</label>
+        <select id="classroomEdit" onchange="loadAssignmentsList()">
+            <option value="">กำลังโหลดห้อง...</option>
+        </select>
+        <div id="classroomEditError" class="field-error"></div>
 
-    <label for="description">รายละเอียดงาน</label>
-    <textarea id="description" placeholder="ตัวอย่าง: ทำข้อ 1-10 แล้วถ่ายรูปหรือส่งเป็น PDF"></textarea>
-
-    <label for="startDate">วันเริ่มส่ง</label>
-    <input type="date" id="startDate">
-    <div class="small">ระบบจะส่งค่าเป็นรูปแบบ YYYY-MM-DD</div>
-
-    <label for="dueDate">วันสิ้นสุด</label>
-    <input type="date" id="dueDate">
-
-    <label for="maxScore">คะแนนเต็ม</label>
-    <input type="number" id="maxScore" placeholder="ตัวอย่าง: 10" min="0">
-
-    <button id="saveBtn" onclick="saveAssignment()">บันทึกงาน</button>
+        <div id="assignmentsList" style="margin-top: 16px;"></div>
+    </div>
 
     <div id="messageBox" class="message"></div>
 </div>
@@ -182,24 +357,255 @@
     const RAW_LIFF_ID = "{{ liff_id }}";
     const LIFF_ID = String(RAW_LIFF_ID || "").trim().replace("https://liff.line.me/", "");
     let teacherLineUserId = "";
+    let assignmentsForEdit = [];
+
+    function setMode(mode) {
+        const isCreate = mode === "create";
+        document.getElementById("createPanel").hidden = !isCreate;
+        document.getElementById("editPanel").hidden = isCreate;
+        document.getElementById("createTab").style.background = isCreate ? "#1554d1" : "#f6f8ff";
+        document.getElementById("createTab").style.color = isCreate ? "white" : "#2450a4";
+        document.getElementById("editTab").style.background = isCreate ? "#f6f8ff" : "#1554d1";
+        document.getElementById("editTab").style.color = isCreate ? "#2450a4" : "white";
+
+        if (!isCreate) {
+            loadRoomsForEdit();
+        }
+    }
+
+    async function loadRoomsForEdit() {
+        const select = document.getElementById("classroomEdit");
+        try {
+            const res = await fetch("/api/teacher/my-rooms?teacher_line_user_id=" + encodeURIComponent(teacherLineUserId));
+            const data = await res.json();
+            select.innerHTML = "";
+
+            if (!data.success) {
+                select.innerHTML = `<option value="">โหลดห้องไม่สำเร็จ</option>`;
+                return;
+            }
+
+            const rooms = data.rooms || [];
+            if (rooms.length === 0) {
+                select.innerHTML = `<option value="">ยังไม่ได้ตั้งค่าห้อง</option>`;
+                return;
+            }
+
+            select.innerHTML = `<option value="">-- เลือกห้อง --</option>`;
+            rooms.forEach(room => {
+                const opt = document.createElement("option");
+                opt.value = room;
+                opt.textContent = room;
+                select.appendChild(opt);
+            });
+        } catch (error) {
+            select.innerHTML = `<option value="">โหลดห้องไม่สำเร็จ</option>`;
+        }
+    }
+
+    async function loadAssignmentsList() {
+        const classroom = document.getElementById("classroomEdit").value.trim();
+        const list = document.getElementById("assignmentsList");
+
+        if (!classroom) {
+            list.innerHTML = "";
+            return;
+        }
+
+        list.innerHTML = "<div class='empty-state'>กำลังโหลด...</div>";
+
+        try {
+            const params = new URLSearchParams({
+                teacher_line_user_id: teacherLineUserId,
+                classroom: classroom
+            });
+            const res = await fetch("/api/teacher/assignments?" + params.toString());
+            const data = await res.json();
+
+            if (!data.success) {
+                list.innerHTML = `<div class='empty-state'>${data.message || "โหลดไม่สำเร็จ"}</div>`;
+                return;
+            }
+
+            assignmentsForEdit = data.assignments || [];
+            if (assignmentsForEdit.length === 0) {
+                list.innerHTML = "<div class='empty-state'>ยังไม่มีงานในห้องนี้</div>";
+                return;
+            }
+
+            list.innerHTML = "";
+            assignmentsForEdit.forEach(assignment => {
+                const item = document.createElement("div");
+                item.className = "edit-item";
+
+                const title = document.createElement("div");
+                title.className = "edit-item-title";
+                title.textContent = assignment.title || "ไม่มีชื่อ";
+
+                const meta = document.createElement("div");
+                meta.className = "edit-item-meta";
+                meta.innerHTML = `บท: ${assignment.chapter_name || "-"} | ประเภท: ${assignment.score_category_label || "-"}`;
+
+                const weightContainer = document.createElement("div");
+                weightContainer.className = "edit-item-weight";
+
+                const input = document.createElement("input");
+                input.type = "number";
+                input.min = "0";
+                input.max = "60";
+                input.step = "0.01";
+                input.inputMode = "decimal";
+                input.placeholder = "น้ำหนักคะแนน";
+                input.value = assignment.score_weight || "0";
+                input.dataset.assignmentId = assignment.assignment_id;
+
+                const btn = document.createElement("button");
+                btn.textContent = "บันทึก";
+                btn.style.width = "auto";
+                btn.style.padding = "10px 16px";
+                btn.style.marginTop = "0";
+                btn.onclick = () => updateWeight(input, assignment);
+
+                weightContainer.appendChild(input);
+                weightContainer.appendChild(btn);
+
+                item.appendChild(title);
+                item.appendChild(meta);
+                item.appendChild(weightContainer);
+                list.appendChild(item);
+            });
+        } catch (error) {
+            list.innerHTML = `<div class='empty-state'>เกิดข้อผิดพลาด: ${error.message}</div>`;
+        }
+    }
+
+    async function updateWeight(input, assignment) {
+        const weight = input.value.trim();
+        const btn = input.nextElementSibling;
+
+        if (!weight) {
+            showMessage("กรุณากรอกน้ำหนักคะแนน", "error");
+            return;
+        }
+
+        const weightNum = Number(weight);
+        if (!Number.isFinite(weightNum) || weightNum < 0) {
+            showMessage("น้ำหนักคะแนนต้องเป็นตัวเลขที่ไม่ติดลบ", "error");
+            return;
+        }
+
+        if (weightNum > 60) {
+            showMessage("น้ำหนักคะแนนต้องไม่เกิน 60", "error");
+            return;
+        }
+
+        btn.disabled = true;
+        const originalText = btn.textContent;
+        btn.textContent = "กำลังบันทึก...";
+
+        try {
+            const res = await fetch("/api/teacher/update-assignment-weight", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    teacher_line_user_id: teacherLineUserId,
+                    classroom: document.getElementById("classroomEdit").value.trim(),
+                    assignment_id: assignment.assignment_id,
+                    score_weight: weight
+                })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                showMessage("อัปเดตเรียบร้อยแล้ว", "success");
+                btn.textContent = "บันทึก";
+            } else {
+                showMessage(data.message || "ไม่สำเร็จ", "error");
+                btn.textContent = originalText;
+            }
+        } catch (error) {
+            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+            btn.textContent = originalText;
+        } finally {
+            btn.disabled = false;
+        }
+    }
 
     async function main() {
         try {
             await liff.init({ liffId: LIFF_ID });
-
             if (!liff.isLoggedIn()) {
                 liff.login();
                 return;
             }
-
             const profile = await liff.getProfile();
             teacherLineUserId = profile.userId;
-
             await loadRooms();
-
+            bindEvents();
+            updateTaskTypeUI();
         } catch (error) {
             showMessage("เปิด LIFF ไม่สำเร็จ: " + error.message, "error");
         }
+    }
+
+    function bindEvents() {
+        document.getElementById("classroom").addEventListener("change", () => {
+            clearFieldError("classroom");
+            loadChapters();
+        });
+
+        ["chapterName", "workTitle", "startDate", "dueDate", "dueTime", "maxScore", "scoreWeight"].forEach(fieldId => {
+            const field = document.getElementById(fieldId);
+            if (field) {
+                field.addEventListener("input", () => clearFieldError(fieldId));
+            }
+        });
+
+        document.querySelectorAll('input[name="taskType"]').forEach(input => {
+            input.addEventListener("change", () => {
+                clearFieldError("taskTypeOptions");
+                updateTaskTypeUI();
+            });
+        });
+
+        document.querySelectorAll(".type-option").forEach(option => {
+            option.addEventListener("click", () => {
+                const radio = option.querySelector('input[name="taskType"]');
+                if (radio) {
+                    radio.checked = true;
+                    updateTaskTypeUI();
+                }
+            });
+        });
+
+        document.querySelectorAll('input[name="allowedFileType"], #allowLinkSubmission').forEach(input => {
+            input.addEventListener("change", () => clearFieldError("fileTypeOptions"));
+        });
+    }
+
+    function getTaskType() {
+        const selected = document.querySelector('input[name="taskType"]:checked');
+        return selected ? selected.value : "assignment";
+    }
+
+    function updateTaskTypeUI() {
+        const taskType = getTaskType();
+        document.querySelectorAll(".type-option").forEach(option => {
+            const radio = option.querySelector('input[name="taskType"]');
+            option.classList.toggle("active", radio && radio.checked);
+        });
+
+        const isWorkLike = taskType === "assignment" || taskType === "notebook";
+        document.getElementById("assignmentPanel").hidden = !isWorkLike;
+        document.getElementById("scorePanel").hidden = false;
+
+        const workTitleLabel = document.querySelector('label[for="workTitle"]');
+        if (workTitleLabel) {
+            workTitleLabel.textContent = taskType === "notebook" ? "ชื่อรายการ (ไม่บังคับ)" : "ชื่อใบงาน";
+        }
+
+        const saveBtn = document.getElementById("saveBtn");
+        saveBtn.innerText = taskType === "quiz" ? "บันทึกและไปกรอกคะแนน" : "บันทึกงาน";
     }
 
     function showMessage(text, type) {
@@ -209,13 +615,39 @@
         box.style.display = "block";
     }
 
+    function setFieldError(fieldId, message) {
+        const field = document.getElementById(fieldId);
+        const error = document.getElementById(fieldId + "Error");
+        if (field) field.classList.add("field-invalid");
+        if (error) {
+            error.innerText = message;
+            error.classList.add("show");
+        }
+    }
+
+    function clearFieldError(fieldId) {
+        const field = document.getElementById(fieldId);
+        const error = document.getElementById(fieldId + "Error");
+        if (field) field.classList.remove("field-invalid");
+        if (error) {
+            error.innerText = "";
+            error.classList.remove("show");
+        }
+    }
+
+    function clearFormErrors() {
+        ["classroom", "chapterName", "workTitle", "startDate", "dueDate", "dueTime", "maxScore", "scoreWeight", "fileTypeOptions", "taskTypeOptions"].forEach(clearFieldError);
+    }
+
+    function getSelectedAllowedFileTypes() {
+        return Array.from(document.querySelectorAll('input[name="allowedFileType"]:checked')).map(input => input.value);
+    }
+
     async function loadRooms() {
         const select = document.getElementById("classroom");
-
         try {
             const res = await fetch("/api/teacher/my-rooms?teacher_line_user_id=" + encodeURIComponent(teacherLineUserId));
             const data = await res.json();
-
             select.innerHTML = "";
 
             if (!data.success) {
@@ -225,7 +657,6 @@
             }
 
             const rooms = data.rooms || [];
-
             if (rooms.length === 0) {
                 select.innerHTML = `<option value="">ยังไม่ได้ตั้งค่าห้อง</option>`;
                 showMessage("ยังไม่ได้ตั้งค่าห้อง กรุณาไปเมนูตั้งค่าห้องก่อน", "error");
@@ -233,89 +664,213 @@
             }
 
             select.innerHTML = `<option value="">-- เลือกห้อง --</option>`;
-
             rooms.forEach(room => {
                 const opt = document.createElement("option");
                 opt.value = room;
                 opt.textContent = room;
                 select.appendChild(opt);
             });
-
         } catch (error) {
             select.innerHTML = `<option value="">โหลดห้องไม่สำเร็จ</option>`;
             showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
         }
     }
 
+    async function loadChapters() {
+        const classroom = document.getElementById("classroom").value.trim();
+        const datalist = document.getElementById("chapterSuggestions");
+        datalist.innerHTML = "";
+
+        if (!classroom || !teacherLineUserId) {
+            return;
+        }
+
+        try {
+            const params = new URLSearchParams({
+                teacher_line_user_id: teacherLineUserId,
+                classroom: classroom
+            });
+            const res = await fetch("/api/teacher/chapters?" + params.toString());
+            const data = await res.json();
+            if (!data.success) {
+                return;
+            }
+
+            (data.chapters || []).forEach(chapter => {
+                const opt = document.createElement("option");
+                opt.value = chapter;
+                datalist.appendChild(opt);
+            });
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    function redirectToScoreEntry(classroom, assignmentId) {
+        const query = new URLSearchParams({
+            mode: "scores",
+            classroom: classroom,
+            assignment_id: assignmentId
+        });
+        window.location.href = "/teacher-assignment?" + query.toString();
+    }
+
     async function saveAssignment() {
         const classroom = document.getElementById("classroom").value.trim();
-        const title = document.getElementById("title").value.trim();
+        const chapterName = document.getElementById("chapterName").value.trim();
+        const taskType = getTaskType();
+        const workTitle = document.getElementById("workTitle").value.trim();
         const description = document.getElementById("description").value.trim();
         const startDate = document.getElementById("startDate").value.trim();
         const dueDate = document.getElementById("dueDate").value.trim();
+        const dueTime = document.getElementById("dueTime").value.trim();
         const maxScore = document.getElementById("maxScore").value.trim();
+        const scoreWeight = document.getElementById("scoreWeight").value.trim();
+        const allowedFileTypes = getSelectedAllowedFileTypes();
+        const allowLinkSubmission = document.getElementById("allowLinkSubmission").checked;
         const btn = document.getElementById("saveBtn");
+        clearFormErrors();
 
         if (!teacherLineUserId) {
             showMessage("ไม่พบ LINE userId กรุณาปิดแล้วเปิดใหม่", "error");
             return;
         }
-
         if (!classroom) {
+            setFieldError("classroom", "กรุณาเลือกห้อง");
             showMessage("กรุณาเลือกห้อง", "error");
             return;
         }
-
-        if (!title) {
-            showMessage("กรุณากรอกชื่องาน", "error");
+        if (!chapterName) {
+            setFieldError("chapterName", "กรุณากรอกชื่อบท");
+            showMessage("กรุณากรอกชื่อบท", "error");
             return;
+        }
+        if (taskType === "assignment" && !workTitle) {
+            setFieldError("workTitle", "กรุณากรอกชื่อใบงาน");
+            showMessage("กรุณากรอกชื่อใบงาน", "error");
+            return;
+        }
+        if (taskType === "assignment" || taskType === "notebook") {
+            if (!dueDate) {
+                setFieldError("dueDate", "กรุณาเลือกวันสิ้นสุด");
+                showMessage("กรุณาเลือกวันสิ้นสุด", "error");
+                return;
+            }
+            if (!dueTime) {
+                setFieldError("dueTime", "กรุณาเลือกเวลาสิ้นสุด");
+                showMessage("กรุณาเลือกเวลาสิ้นสุด", "error");
+                return;
+            }
+            if (startDate && dueDate && startDate > dueDate) {
+                setFieldError("startDate", "วันเริ่มส่งต้องไม่เกินวันสิ้นสุด");
+                setFieldError("dueDate", "วันสิ้นสุดต้องไม่น้อยกว่าวันเริ่มส่ง");
+                showMessage("วันเริ่มส่งต้องไม่เกินวันสิ้นสุด", "error");
+                return;
+            }
+            if (allowedFileTypes.length === 0 && !allowLinkSubmission) {
+                setFieldError("fileTypeOptions", "กรุณาเลือกประเภทไฟล์ หรืออนุญาตให้ส่งเป็นลิงก์อย่างน้อย 1 อย่าง");
+                showMessage("กรุณาเลือกประเภทไฟล์ หรืออนุญาตให้ส่งเป็นลิงก์อย่างน้อย 1 อย่าง", "error");
+                return;
+            }
+        }
+        const scoreWeightText = scoreWeight === "" ? "0" : scoreWeight;
+        const scoreWeightValue = Number(scoreWeightText);
+        if (!Number.isFinite(scoreWeightValue) || scoreWeightValue < 0) {
+            setFieldError("scoreWeight", "น้ำหนักคะแนนต้องเป็นตัวเลขที่ไม่ติดลบ");
+            showMessage("น้ำหนักคะแนนต้องเป็นตัวเลขที่ไม่ติดลบ", "error");
+            return;
+        }
+        if (scoreWeightValue > 60) {
+            setFieldError("scoreWeight", "น้ำหนักคะแนนต้องไม่เกิน 60");
+            showMessage("น้ำหนักคะแนนต้องไม่เกิน 60", "error");
+            return;
+        }
+
+        let maxScoreValue = maxScore === "" ? 0 : Number(maxScore);
+        if (scoreWeightValue > 0) {
+            if (!maxScore) {
+                maxScoreValue = scoreWeightValue;
+            } else if (!Number.isFinite(maxScoreValue) || maxScoreValue <= 0) {
+                setFieldError("maxScore", "คะแนนเต็มต้องมากกว่า 0");
+                showMessage("เมื่อน้ำหนักมากกว่า 0 ต้องกรอกคะแนนเต็มของงาน", "error");
+                return;
+            } else if (maxScoreValue > 1000) {
+                setFieldError("maxScore", "คะแนนเต็มต้องไม่เกิน 1000");
+                showMessage("คะแนนเต็มต้องไม่เกิน 1000", "error");
+                return;
+            }
+        } else if (maxScore) {
+            if (!Number.isFinite(maxScoreValue) || maxScoreValue <= 0) {
+                setFieldError("maxScore", "คะแนนเต็มต้องมากกว่า 0");
+                showMessage("คะแนนเต็มต้องมากกว่า 0", "error");
+                return;
+            }
+            if (maxScoreValue > 1000) {
+                setFieldError("maxScore", "คะแนนเต็มต้องไม่เกิน 1000");
+                showMessage("คะแนนเต็มต้องไม่เกิน 1000", "error");
+                return;
+            }
         }
 
         btn.disabled = true;
         btn.innerText = "กำลังบันทึก...";
 
         try {
+            const payload = {
+                teacher_line_user_id: teacherLineUserId,
+                classroom: classroom,
+                chapter_name: chapterName,
+                score_category: taskType,
+                score_weight: scoreWeightText,
+                max_score: maxScore ? String(maxScoreValue) : (scoreWeightValue > 0 ? String(scoreWeightValue) : "")
+            };
+
+            if (taskType === "assignment" || taskType === "notebook") {
+                payload.work_title = workTitle;
+                payload.description = description;
+                payload.start_date = startDate;
+                payload.due_date = dueDate;
+                payload.due_time = dueTime;
+                payload.allowed_file_types = allowedFileTypes;
+                payload.allow_link_submission = allowLinkSubmission;
+            }
+
             const res = await fetch("/api/teacher/assignment", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({
-                    teacher_line_user_id: teacherLineUserId,
-                    classroom: classroom,
-                    title: title,
-                    description: description,
-                    start_date: startDate,
-                    due_date: dueDate,
-                    max_score: maxScore
-                })
+                body: JSON.stringify(payload)
             });
-
             const data = await res.json();
 
             if (data.success) {
-                showMessage("บันทึกงานเรียบร้อยแล้ว\nเพิ่มหัวงานในแท็บห้องแล้ว", "success");
-                btn.innerText = "บันทึกสำเร็จ";
+                if (data.redirect_to_scores && data.assignment_id) {
+                    showMessage("บันทึกงานแล้ว กำลังไปหน้ากรอกคะแนน...", "success");
+                    setTimeout(() => {
+                        redirectToScoreEntry(classroom, data.assignment_id);
+                    }, 600);
+                    return;
+                }
 
+                showMessage("บันทึกงานเรียบร้อยแล้ว", "success");
+                btn.innerText = "บันทึกสำเร็จ";
                 setTimeout(() => {
                     if (liff.isInClient()) {
                         liff.closeWindow();
                     }
                 }, 1600);
-
             } else {
                 showMessage(data.message || "บันทึกงานไม่สำเร็จ", "error");
                 btn.disabled = false;
-                btn.innerText = "บันทึกงาน";
+                updateTaskTypeUI();
             }
-
         } catch (error) {
             showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
             btn.disabled = false;
-            btn.innerText = "บันทึกงาน";
+            updateTaskTypeUI();
         }
     }
 
     main();
 </script>
-
 </body>
 </html>

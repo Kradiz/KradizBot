@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="th">
 <head>
     <meta charset="UTF-8">
@@ -12,7 +12,7 @@
 
         body {
             font-family: Arial, "Tahoma", sans-serif;
-            background: #f4f7fb;
+            background: #eef2f7;
             margin: 0;
             padding: 16px;
             color: #222;
@@ -22,14 +22,15 @@
             max-width: 560px;
             margin: 0 auto;
             background: #ffffff;
-            border-radius: 18px;
+            border: 1px solid #dbe3ee;
+            border-radius: 8px;
             padding: 22px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
         }
 
         h1 {
             text-align: center;
-            color: #1f5eff;
+            color: #1554d1;
             font-size: 24px;
             margin: 0 0 8px;
         }
@@ -42,11 +43,40 @@
             margin-bottom: 18px;
         }
 
+        .tab-bar {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .tab-button {
+            width: 100%;
+            min-height: 44px;
+            margin: 0;
+            padding: 10px;
+            border: 1px solid #c8d9ff;
+            border-radius: 8px;
+            background: #f6f8ff;
+            color: #2450a4;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .tab-button.active {
+            background: #1554d1;
+            color: #ffffff;
+            border-color: #1554d1;
+        }
+
+        .tab-panel[hidden] { display: none; }
+
         .hint {
             background: #eef4ff;
             border: 1px solid #c8d9ff;
             color: #2450a4;
-            border-radius: 12px;
+            border-radius: 8px;
             padding: 12px;
             font-size: 14px;
             line-height: 1.6;
@@ -55,7 +85,7 @@
 
         .card {
             border: 1px solid #d6dbe6;
-            border-radius: 14px;
+            border-radius: 8px;
             padding: 14px;
             margin-bottom: 12px;
             background: #fbfcff;
@@ -74,10 +104,65 @@
             white-space: pre-line;
         }
 
+        .metric-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .metric {
+            border: 1px solid #dbe3ee;
+            border-radius: 8px;
+            padding: 10px;
+            background: #ffffff;
+        }
+
+        .metric-label {
+            display: block;
+            font-size: 12px;
+            font-weight: bold;
+            color: #667085;
+            margin-bottom: 3px;
+        }
+
+        .metric-value {
+            display: block;
+            font-size: 17px;
+            font-weight: bold;
+            color: #1f2937;
+            overflow-wrap: anywhere;
+        }
+
+        .ok {
+            background: #e8f8ee;
+            border-color: #bde8ca;
+            color: #137333;
+        }
+
+        .warn {
+            background: #fff7df;
+            border-color: #f5d982;
+            color: #915b00;
+        }
+
+        .danger {
+            background: #fdeaea;
+            border-color: #f4b4b4;
+            color: #b3261e;
+        }
+
+        .section-title {
+            font-size: 17px;
+            font-weight: bold;
+            color: #1554d1;
+            margin: 6px 0 10px;
+        }
+
         .message {
             margin-top: 16px;
             padding: 12px;
-            border-radius: 12px;
+            border-radius: 8px;
             font-size: 15px;
             line-height: 1.5;
             white-space: pre-line;
@@ -100,6 +185,12 @@
             color: #2450a4;
             border: 1px solid #c8d9ff;
         }
+
+        @media (max-width: 430px) {
+            body { padding: 10px; }
+            .container { padding: 16px; }
+            .metric-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -107,15 +198,25 @@
 <div class="container">
     <h1>ประกาศของห้อง</h1>
     <div class="subtitle">
-        แสดงประกาศที่ครูส่งถึงห้องของคุณ
+        แสดงประกาศ คะแนน และสรุปการมาเรียนของคุณ
     </div>
 
-    <div class="hint">
-        ถ้าไม่เห็นประกาศ อาจยังไม่มีประกาศสำหรับห้องของคุณ หรือยังไม่ได้ลงทะเบียนห้องเรียน
+    <div class="tab-bar">
+        <button type="button" id="announceTabBtn" class="tab-button active" onclick="setTab('announce')">ประกาศ</button>
+        <button type="button" id="statusTabBtn" class="tab-button" onclick="setTab('status')">คะแนน/มาเรียน</button>
     </div>
 
-    <div id="list"></div>
-    <div id="messageBox" class="message info">กำลังโหลดประกาศ...</div>
+    <section id="announcePanel" class="tab-panel">
+        <div class="hint">
+            ถ้าไม่เห็นประกาศ อาจยังไม่มีประกาศสำหรับห้องของคุณ หรือยังไม่ได้ลงทะเบียนห้องเรียน
+        </div>
+        <div id="list"></div>
+        <div id="announceMessage" class="message info">กำลังโหลดประกาศ...</div>
+    </section>
+
+    <section id="statusPanel" class="tab-panel" hidden>
+        <div id="statusBox" class="message info">กำลังโหลดคะแนนและการมาเรียน...</div>
+    </section>
 </div>
 
 <script>
@@ -135,18 +236,41 @@
             const profile = await liff.getProfile();
             lineUserId = profile.userId;
 
-            await loadAnnouncements();
+            await Promise.all([loadAnnouncements(), loadStudentStatus()]);
 
         } catch (error) {
-            showMessage("เปิด LIFF ไม่สำเร็จ: " + error.message, "error");
+            showAnnounceMessage("เปิด LIFF ไม่สำเร็จ: " + error.message, "error");
         }
     }
 
-    function showMessage(text, type) {
-        const box = document.getElementById("messageBox");
+    function setTab(tabName) {
+        const showStatus = tabName === "status";
+        document.getElementById("announcePanel").hidden = showStatus;
+        document.getElementById("statusPanel").hidden = !showStatus;
+        document.getElementById("announceTabBtn").classList.toggle("active", !showStatus);
+        document.getElementById("statusTabBtn").classList.toggle("active", showStatus);
+    }
+
+    function showAnnounceMessage(text, type) {
+        const box = document.getElementById("announceMessage");
         box.innerText = text;
         box.className = "message " + type;
         box.style.display = "block";
+    }
+
+    function setStatusBox(html, type) {
+        const box = document.getElementById("statusBox");
+        box.innerHTML = html;
+        box.className = "message " + type;
+        box.style.display = "block";
+    }
+
+    function appendText(parent, text) {
+        parent.appendChild(document.createTextNode(text || "-"));
+    }
+
+    function metric(label, value, className) {
+        return `<div class="metric ${className || ""}"><span class="metric-label">${label}</span><span class="metric-value">${value || "-"}</span></div>`;
     }
 
     async function loadAnnouncements() {
@@ -159,34 +283,126 @@
             list.innerHTML = "";
 
             if (!data.success) {
-                showMessage(data.message || "โหลดประกาศไม่สำเร็จ", "error");
+                showAnnounceMessage(data.message || "โหลดประกาศไม่สำเร็จ", "error");
                 return;
             }
 
             const announcements = data.announcements || [];
 
             if (announcements.length === 0) {
-                showMessage("ยังไม่มีประกาศสำหรับห้องของคุณ", "info");
+                showAnnounceMessage("ยังไม่มีประกาศสำหรับห้องของคุณ", "info");
                 return;
             }
 
-            document.getElementById("messageBox").style.display = "none";
+            document.getElementById("announceMessage").style.display = "none";
 
             announcements.forEach(item => {
                 const div = document.createElement("div");
                 div.className = "card";
-                div.innerHTML = `
-                    <div class="meta">
-                        ห้อง ${item.classroom || "-"}<br>
-                        โดย ${item.teacher_name || "ครู"} | ${item.created_at || "-"}
-                    </div>
-                    <div class="msg">${item.message || ""}</div>
-                `;
+
+                const meta = document.createElement("div");
+                meta.className = "meta";
+                appendText(meta, "ห้อง " + (item.classroom || "-"));
+                meta.appendChild(document.createElement("br"));
+                appendText(meta, "โดย " + (item.teacher_name || "ครู") + " | " + (item.created_at || "-"));
+
+                const message = document.createElement("div");
+                message.className = "msg";
+                appendText(message, item.message || "");
+
+                div.appendChild(meta);
+                div.appendChild(message);
                 list.appendChild(div);
             });
 
         } catch (error) {
-            showMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+            showAnnounceMessage("เกิดข้อผิดพลาด: " + error.message, "error");
+        }
+    }
+
+    function renderStudentStatus(data) {
+        const attendance = data.attendance || {};
+        const score = data.score_summary || {};
+        const counts = attendance.status_counts || {};
+        const attendancePercent = Number(attendance.attendance_percent || 0);
+        const notAttendedPercent = Number(attendance.not_attended_percent || 0);
+        const absentPercent = Number(attendance.absent_percent || 0);
+        const absentClass = attendance.no_exam ? "danger" : (absentPercent > 10 ? "warn" : "ok");
+        const examRight = attendance.no_exam ? "ไม่มีสิทธิ์สอบ" : "ยังมีสิทธิ์สอบ";
+
+        let html = `<div class="section-title">สรุปการมาเรียน</div>`;
+        html += `<div class="metric-grid">`;
+        html += metric("มาเรียน", `${attendance.attended_sessions || 0} / ${attendance.total_sessions || 0} ครั้ง (${attendancePercent.toFixed(2)}%)`, "ok");
+        html += metric("ไม่มาเรียน", `${attendance.not_attended_sessions || 0} ครั้ง (${notAttendedPercent.toFixed(2)}%)`, "danger");
+        html += metric("สิทธิ์สอบ", examRight, attendance.no_exam ? "danger" : "ok");
+        html += metric("ขาด/หนี", `${attendance.absent_sessions || 0} ครั้ง (${absentPercent.toFixed(2)}%)`, absentClass);
+        html += `</div>`;
+        html += `<div class="metric-grid">`;
+        html += metric("นับว่ามาเรียน", `มา ${counts["มา"] || 0} | กิจกรรม ${counts["กิจกรรม"] || 0} | สาย ${counts["สาย"] || 0}`, "ok");
+        html += metric("ไม่นับว่ามาเรียน", `ลา ${counts["ลา"] || 0} | ขาด ${counts["ขาด"] || 0} | หนี ${counts["หนี"] || 0}`, "danger");
+        html += `</div>`;
+
+        html += `<div class="section-title">คะแนน</div>`;
+        if (!score.scores_visible) {
+            html += `<div class="card">ครูยังไม่ได้เปิดให้แสดงคะแนนของห้องนี้</div>`;
+            setStatusBox(html, "info");
+            return;
+        }
+
+        const assignmentItems = score.assignments || [];
+        if (assignmentItems.length) {
+            html += `<div class="card"><div class="meta">คะแนนรายงาน</div>`;
+            assignmentItems.forEach(item => {
+                const scoreText = item.score
+                    ? `${item.score}${item.max_score ? " / " + item.max_score : ""}`
+                    : "ยังไม่มีคะแนน";
+                html += `<div style="margin-top:8px;line-height:1.5">`;
+                html += `<b>${item.title || "-"}</b><br>`;
+                html += `<span class="meta">${item.score_category_label || "-"} | ${scoreText}</span>`;
+                if (item.teacher_comment) {
+                    html += `<br><span class="meta">คอมเมนต์: ${item.teacher_comment}</span>`;
+                }
+                html += `</div>`;
+            });
+            html += `</div>`;
+        }
+
+        html += `<div class="metric-grid">`;
+        if (score.work) {
+            html += metric("คะแนนเก็บ 60", `${score.work.coursework || 0} / 60`, "ok");
+            html += metric("ใบงาน", score.work.assignment || "0", "");
+            html += metric("สอบเก็บคะแนน", score.work.quiz || "0", "");
+            html += metric("คะแนนสมุด", score.work.notebook || "0", "");
+        }
+        if (score.exam) {
+            if (score.exam.midterm !== undefined) {
+                html += metric("กลางภาค", `${score.exam.midterm || 0} / 20`, "");
+            }
+            if (score.exam.final !== undefined) {
+                html += metric("ปลายภาค", `${score.exam.final || 0} / 20`, "");
+            }
+            if (score.exam.exam_total !== undefined) {
+                html += metric("คะแนนสอบรวม", `${score.exam.exam_total || 0} / 40`, "ok");
+            }
+        }
+        if (score.total) {
+            html += metric("รวม", `${score.total} / 100`, "ok");
+        }
+        html += `</div>`;
+        setStatusBox(html, "info");
+    }
+
+    async function loadStudentStatus() {
+        try {
+            const res = await fetch("/api/student/score-attendance?student_line_user_id=" + encodeURIComponent(lineUserId));
+            const data = await res.json();
+            if (!data.success) {
+                setStatusBox(data.message || "โหลดคะแนนและการมาเรียนไม่สำเร็จ", "error");
+                return;
+            }
+            renderStudentStatus(data);
+        } catch (error) {
+            setStatusBox("เกิดข้อผิดพลาด: " + error.message, "error");
         }
     }
 

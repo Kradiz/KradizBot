@@ -12,7 +12,7 @@
 
         body {
             font-family: Arial, "Tahoma", sans-serif;
-            background: #f4f7fb;
+            background: #eef2f7;
             margin: 0;
             padding: 16px;
             color: #222;
@@ -22,14 +22,15 @@
             max-width: 560px;
             margin: 0 auto;
             background: #ffffff;
-            border-radius: 18px;
+            border: 1px solid #dbe3ee;
+            border-radius: 8px;
             padding: 22px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
         }
 
         h1 {
             text-align: center;
-            color: #1f5eff;
+            color: #1554d1;
             font-size: 24px;
             margin: 0 0 8px;
         }
@@ -46,7 +47,7 @@
             background: #eef4ff;
             border: 1px solid #c8d9ff;
             color: #2450a4;
-            border-radius: 12px;
+            border-radius: 8px;
             padding: 12px;
             font-size: 14px;
             line-height: 1.6;
@@ -55,10 +56,15 @@
 
         .card {
             border: 1px solid #d6dbe6;
-            border-radius: 14px;
+            border-radius: 8px;
             padding: 14px;
             margin-bottom: 12px;
             background: #fbfcff;
+        }
+
+        .negative-card {
+            border-color: #f4b4b4;
+            background: #fff8f7;
         }
 
         .title {
@@ -68,16 +74,34 @@
             margin-bottom: 6px;
         }
 
+        .negative-text {
+            color: #b3261e;
+            font-weight: bold;
+        }
+
         .meta {
             font-size: 14px;
             color: #666;
             line-height: 1.5;
         }
 
+        .submit-button {
+            width: 100%;
+            margin-top: 12px;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background: #1554d1;
+            color: #ffffff;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
         .message {
             margin-top: 16px;
             padding: 12px;
-            border-radius: 12px;
+            border-radius: 8px;
             font-size: 15px;
             line-height: 1.5;
             white-space: pre-line;
@@ -112,7 +136,7 @@
 
     <div class="hint">
         <b>วิธีใช้</b><br>
-        ถ้ามีงานค้าง ให้กลับไปกดเมนู “ส่งงาน” แล้วเลือกงานที่ต้องการส่ง<br>
+        ถ้ามีงานค้าง ให้กดปุ่ม “ส่งงานนี้” ใต้รายการที่ต้องการส่ง<br>
         ถ้าส่งแล้วแต่ยังขึ้นค้าง อาจเกิดจากส่งผิดงานหรือใช้บัญชี LINE คนละบัญชี
     </div>
 
@@ -151,6 +175,27 @@
         box.style.display = "block";
     }
 
+    function appendText(parent, text) {
+        parent.appendChild(document.createTextNode(text || "-"));
+    }
+
+    function submitUrlForAssignment(assignmentId) {
+        const url = new URL("/student-submit", window.location.origin);
+        if (assignmentId) {
+            url.searchParams.set("assignment_id", assignmentId);
+        }
+        return url.toString();
+    }
+
+    function goSubmitAssignment(assignmentId) {
+        const url = submitUrlForAssignment(assignmentId);
+        if (window.liff && liff.isInClient()) {
+            liff.openWindow({ url: url, external: true });
+            return;
+        }
+        window.location.href = url;
+    }
+
     async function loadPending() {
         const list = document.getElementById("list");
 
@@ -176,14 +221,30 @@
 
             pending.forEach(item => {
                 const div = document.createElement("div");
-                div.className = "card";
-                div.innerHTML = `
-                    <div class="title">${item.title || "-"}</div>
-                    <div class="meta">
-                        ส่งภายใน: ${item.due_date || "-"}<br>
-                        คะแนนเต็ม: ${item.max_score || "-"}
-                    </div>
-                `;
+                div.className = "card negative-card";
+
+                const title = document.createElement("div");
+                title.className = "title negative-text";
+                appendText(title, item.title);
+
+                const meta = document.createElement("div");
+                meta.className = "meta";
+                const status = document.createElement("span");
+                status.className = "negative-text";
+                appendText(status, "สถานะ: ยังไม่ส่ง!");
+                meta.appendChild(status);
+                meta.appendChild(document.createElement("br"));
+                appendText(meta, "ส่งภายใน: " + (item.due_text || item.due_date || "-"));
+
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = "submit-button";
+                button.textContent = "ส่งงานนี้";
+                button.onclick = () => goSubmitAssignment(item.assignment_id || "");
+
+                div.appendChild(title);
+                div.appendChild(meta);
+                div.appendChild(button);
                 list.appendChild(div);
             });
 
