@@ -965,7 +965,8 @@ def reply_messages(reply_token, messages):
 
 def push_message(to, text, enable_notification=True):
     if not to:
-        return
+        print("[push_message] Warning: 'to' is empty")
+        return None
 
     message = {
         "type": "text",
@@ -981,12 +982,15 @@ def push_message(to, text, enable_notification=True):
     }
 
     try:
-        r = requests.post(LINE_PUSH_URL, headers=line_headers(), json=payload, timeout=15)
-        print("[push_message]", r.status_code, r.text)
+        headers = line_headers()
+        print(f"[push_message] Sending to: {to[:20]}..., token exists: {bool(LINE_CHANNEL_ACCESS_TOKEN)}")
+        r = requests.post(LINE_PUSH_URL, headers=headers, json=payload, timeout=15)
+        print(f"[push_message] Status: {r.status_code}, Response: {r.text[:200]}")
         return r
     except Exception as e:
-        print("[push_message] Error:", e)
+        print(f"[push_message] Error: {e}")
         return None
+
 
 
 def push_messages(to, messages):
@@ -5143,30 +5147,38 @@ def api_teacher_answer_question():
 
 @app.route("/api/teacher/announce", methods=["POST"])
 def api_teacher_announce():
+    print("[announce-start] เริ่มการทำงาน")
     try:
         data = request.get_json()
+        print(f"[announce] ได้ data: {bool(data)}")
 
         teacher_line_user_id = str(
             data.get("teacher_line_user_id", "") or data.get("line_user_id", "")
         ).strip()
         classroom = normalize_classroom_text(data.get("classroom", ""))
         message = str(data.get("message", "")).strip()
+        
+        print(f"[announce] teacher_id={teacher_line_user_id[:10] if teacher_line_user_id else 'NONE'}, classroom={classroom}, msg_len={len(message)}")
 
         teacher = get_teacher_by_line_user_id(teacher_line_user_id)
         if not teacher:
+            print("[announce] ไม่พบครู")
             return jsonify({
                 "success": False,
                 "message": "ไม่มีสิทธิ์ครู",
             })
 
         rooms = get_teacher_rooms(teacher_line_user_id)
+        print(f"[announce] ห้องของครู: {rooms}")
         if classroom not in rooms:
+            print(f"[announce] ห้อง {classroom} ไม่อยู่ในรายชื่อของครู")
             return jsonify({
                 "success": False,
                 "message": "คุณไม่ได้ดูแลห้องนี้",
             })
 
         if not classroom or not message:
+            print("[announce] classroom หรือ message ว่าง")
             return jsonify({
                 "success": False,
                 "message": "กรุณาเลือกห้องและกรอกข้อความประกาศ",
@@ -5193,20 +5205,41 @@ def api_teacher_announce():
         )
         flush_sheet_append_buffers()
         invalidate_sheet_cache("announcements")
+        print(f"[announce] เก็บประกาศเข้า sheet เสร็จ (ID: {announcement_id})")
 
         text = f"ประกาศห้อง {classroom}\n\n{message}"
 
         # ส่งเข้ากลุ่มถ้าผูกไว้
         group_id = get_class_group_id(classroom)
+        print(f"[announce] group_id สำหรับห้อง {classroom} = {group_id}")
         if group_id:
-            push_message(group_id, text)
+            try:
+                print(f"[announce] กำลังส่งเข้ากลุ่ม {group_id}")
+                res = push_message(group_id, text)
+                print(f"[announce] ส่งเข้ากลุ่ม {classroom} สำเร็จ: {res.status_code if res else 'None'}")
+            except Exception as e:
+                print(f"[announce] เก็บเข้ากลุ่ม {classroom} ล้มเหลว: {e}")
+        else:
+            print(f"[announce] ไม่พบ group_id สำหรับห้อง {classroom}")
 
         # ส่งส่วนตัวให้นักเรียนที่แอดบอทไว้
         students = get_students_by_classroom(classroom)
-        for s in students:
-            sid = str(s.get("student_line_user_id", "")).strip()
-            if sid:
-                push_message(sid, text)
+        print(f"[announce] จำนวนนักเรียนในห้อง {classroom}: {len(students) if students else 0}")
+        sent_count = 0
+        if students:
+            for s in students:
+                sid = str(s.get("student_line_user_id", "")).strip()
+                if sid:
+                    try:
+                        print(f"[announce] กำลังส่งส่วนตัวให้ {sid[:15]}...")
+                        res = push_message(sid, text)
+                        if res and res.status_code == 200:
+                            sent_count += 1
+                        print(f"[announce] ส่งส่วนตัวให้นักเรียน {sid}: {res.status_code if res else 'None'}")
+                    except Exception as e:
+                        print(f"[announce] ส่งส่วนตัวให้นักเรียน {sid} ล้มเหลว: {e}")
+        
+        print(f"[announce] ส่งประกาศห้อง {classroom} เสร็จ: {sent_count} นักเรียน, group={'✓' if group_id else '✗'}")
 
         return jsonify({
             "success": True,
@@ -6250,6 +6283,53 @@ def api_student_assignments():
         if str(s.get("assignment_id", "")).strip()
     }
 
+    # ดึงคะแนนจากชีตสรุปห้องเพื่อให้เห็นคะแนนที่ยังไม่ซิงก์
+    classroom_summary_scores = {}
+    try:
+        summary_ws = get_worksheet(classroom_sheet_name(classroom))
+        summary_values = summary_ws.get_all_values()
+        if len(summary_values) > 3:
+            summary_header_row = summary_values[2] if len(summary_values) > 2 else []
+            try:
+                assignment_start_idx = next(
+                    i for i, value in enumerate(summary_header_row)
+                    if str(value).strip() == "ตรวจเวลา"
+                )
+            except StopIteration:
+                assignment_start_idx = 3
+
+            summary_has_auto_score = (
+                len(summary_header_row) > assignment_start_idx + 2
+                and str(summary_header_row[assignment_start_idx + 2]).strip() == "คะแนนส่ง"
+            )
+            assignment_col_count = 6 if summary_has_auto_score else 5
+            score_offset = 3 if summary_has_auto_score else 2
+            comment_offset = 4 if summary_has_auto_score else 3
+
+            for sheet_row, row in enumerate(summary_values[3:]):
+                if len(row) < 3:
+                    continue
+                sheet_student_id = str(row[2]).strip()
+                if sheet_student_id != student_line_user_id:
+                    continue
+
+                for idx, assignment in enumerate(assignments):
+                    assignment_id = str(assignment.get("assignment_id", "")).strip()
+                    if not assignment_id:
+                        continue
+                    score_idx = assignment_start_idx + idx * assignment_col_count + score_offset
+                    comment_idx = assignment_start_idx + idx * assignment_col_count + comment_offset
+                    score = str(row[score_idx]).strip() if score_idx < len(row) else ""
+                    comment = str(row[comment_idx]).strip() if comment_idx < len(row) else ""
+                    if score or comment:
+                        classroom_summary_scores[assignment_id] = {
+                            "score": score,
+                            "teacher_comment": comment,
+                        }
+                break
+    except Exception as e:
+        pass
+
     result = []
     for a in assignments:
         aid = str(a.get("assignment_id", "")).strip()
@@ -6262,16 +6342,33 @@ def api_student_assignments():
         sub = submission_by_assignment.get(aid)
         item["can_edit_submission"] = bool(sub and submission_edit_allowed(item))
         item["edit_deadline_text"] = assignment_due_text(item)
+        
+        # ดึงคะแนนจากชีตสรุปห้องถ้ามี
+        score_from_sheet = classroom_summary_scores.get(aid, {})
+        
         if sub:
             submission_payload = {
                 "submitted_at": str(sub.get("submitted_at", "")).strip(),
                 "late": str(sub.get("late", "")).strip(),
                 "auto_score": str(sub.get("auto_score", "")).strip(),
-                "score": str(sub.get("score", "")).strip(),
-                "teacher_comment": str(sub.get("teacher_comment", "")).strip(),
+                "score": score_from_sheet.get("score", "") or str(sub.get("score", "")).strip(),
+                "teacher_comment": score_from_sheet.get("teacher_comment", "") or str(sub.get("teacher_comment", "")).strip(),
                 "checked_at": str(sub.get("checked_at", "")).strip(),
                 "file_url": str(sub.get("file_url", "")).strip(),
                 "can_edit": item["can_edit_submission"],
+            }
+            item["submission"] = submission_payload
+        elif score_from_sheet:
+            # ไม่มี submission แต่มีคะแนนในชีต
+            submission_payload = {
+                "submitted_at": "",
+                "late": "",
+                "auto_score": "",
+                "score": score_from_sheet.get("score", ""),
+                "teacher_comment": score_from_sheet.get("teacher_comment", ""),
+                "checked_at": "",
+                "file_url": "",
+                "can_edit": False,
             }
             item["submission"] = submission_payload
         else:
@@ -6334,6 +6431,53 @@ def api_student_scores():
         submissions = get_submissions_by_student(student_line_user_id)
         submission_dict = {str(s.get("assignment_id", "")).strip(): s for s in submissions}
 
+        # ดึงคะแนนจากชีตสรุปห้องเพื่อให้เห็นคะแนนที่ยังไม่ซิงก์
+        classroom_summary_scores = {}
+        try:
+            summary_ws = get_worksheet(classroom_sheet_name(classroom))
+            summary_values = summary_ws.get_all_values()
+            if len(summary_values) > 3:
+                summary_header_row = summary_values[2] if len(summary_values) > 2 else []
+                try:
+                    assignment_start_idx = next(
+                        i for i, value in enumerate(summary_header_row)
+                        if str(value).strip() == "ตรวจเวลา"
+                    )
+                except StopIteration:
+                    assignment_start_idx = 3
+
+                summary_has_auto_score = (
+                    len(summary_header_row) > assignment_start_idx + 2
+                    and str(summary_header_row[assignment_start_idx + 2]).strip() == "คะแนนส่ง"
+                )
+                assignment_col_count = 6 if summary_has_auto_score else 5
+                score_offset = 3 if summary_has_auto_score else 2
+                comment_offset = 4 if summary_has_auto_score else 3
+
+                for sheet_row, row in enumerate(summary_values[3:]):
+                    if len(row) < 3:
+                        continue
+                    sheet_student_id = str(row[2]).strip()
+                    if sheet_student_id != student_line_user_id:
+                        continue
+
+                    for idx, assignment in enumerate(assignments):
+                        assignment_id = str(assignment.get("assignment_id", "")).strip()
+                        if not assignment_id:
+                            continue
+                        score_idx = assignment_start_idx + idx * assignment_col_count + score_offset
+                        comment_idx = assignment_start_idx + idx * assignment_col_count + comment_offset
+                        score = str(row[score_idx]).strip() if score_idx < len(row) else ""
+                        comment = str(row[comment_idx]).strip() if comment_idx < len(row) else ""
+                        if score or comment:
+                            classroom_summary_scores[assignment_id] = {
+                                "score": score,
+                                "teacher_comment": comment,
+                            }
+                    break
+        except Exception as e:
+            pass
+
         scores = []
         for a in assignments:
             a = add_assignment_due_metadata(dict(a))
@@ -6349,7 +6493,14 @@ def api_student_scores():
             elif score_category in ["assignment", "notebook"]:
                 show_score = parse_bool(visibility.get("show_work_scores", False), default=False)
 
-            if submission or show_score:
+            # แสดงทุกงานที่มี submission หรือมีคะแนน/คอมเม้นในชีต
+            has_score_or_comment = bool(classroom_summary_scores.get(assignment_id))
+            if submission or show_score or has_score_or_comment:
+                # ใช้คะแนนจากชีตสรุปห้องถ้ามี แล้วจึงใช้จาก submissions
+                score_from_sheet = classroom_summary_scores.get(assignment_id, {})
+                final_score = score_from_sheet.get("score", "") or (submission.get("score", "") if submission else "")
+                final_comment = score_from_sheet.get("teacher_comment", "") or (submission.get("teacher_comment", "") if submission else "")
+
                 scores.append({
                     "assignment_id": assignment_id,
                     "title": a.get("title", ""),
@@ -6357,8 +6508,8 @@ def api_student_scores():
                     "score_category": score_category,
                     "score_category_label": a.get("score_category_label", ""),
                     "max_score": a.get("max_score", ""),
-                    "score": submission.get("score", "") if submission else "",
-                    "teacher_comment": submission.get("teacher_comment", "") if submission else "",
+                    "score": final_score,
+                    "teacher_comment": final_comment,
                     "submission_status": get_submission_status(submission, a) if submission else "ยังไม่ส่ง",
                     "submitted_at": submission.get("submitted_at", "") if submission else "",
                 })
