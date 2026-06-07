@@ -828,6 +828,24 @@ def _batch_flusher():
                 print(f"[batch_flusher] Failed to flush {len(rows)} rows to {sheet_name}:", e)
 
 
+def flush_sheet_append_buffers():
+    """Manually flush all buffered sheet append operations."""
+    to_flush = []
+    with _sheet_append_buffers_lock:
+        for sheet_name, buf in list(_sheet_append_buffers.items()):
+            if buf["rows"]:
+                rows = buf["rows"][:]
+                buf["rows"] = []
+                to_flush.append((sheet_name, rows, buf.get("value_input_option", "USER_ENTERED")))
+
+    for sheet_name, rows, value_input_option in to_flush:
+        try:
+            ws = get_worksheet(sheet_name)
+            call_google_sheet_api(lambda: ws.append_rows(rows, value_input_option=value_input_option))
+        except Exception as e:
+            print(f"[flush_sheet_append_buffers] Failed to flush {len(rows)} rows to {sheet_name}:", e)
+
+
 def invalidate_sheet_cache(sheet_name):
     invalidate_shared_sheet_cache(sheet_name)
 
@@ -5173,6 +5191,7 @@ def api_teacher_announce():
             }),
             value_input_option="RAW",
         )
+        flush_sheet_append_buffers()
         invalidate_sheet_cache("announcements")
 
         text = f"ประกาศห้อง {classroom}\n\n{message}"
