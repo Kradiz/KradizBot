@@ -1,5 +1,6 @@
 ﻿import os
 import re
+import sys
 import json
 import uuid
 import mimetypes
@@ -22,6 +23,14 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
 from io import BytesIO
+
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 
 load_dotenv()
@@ -980,6 +989,8 @@ def push_message(to, text, enable_notification=True):
         "to": to,
         "messages": [message],
     }
+    if not enable_notification:
+        payload["notificationDisabled"] = True
 
     try:
         headers = line_headers()
@@ -1938,11 +1949,12 @@ def sync_classroom_scores_for_teacher(user_id, classroom):
 
 
 def get_class_group_id(classroom):
+    classroom = normalize_classroom_text(classroom)
     records = get_sheet_records("class_groups")
 
     for r in records:
-        if str(r.get("classroom", "")).strip() == str(classroom).strip():
-            return str(r.get("group_id", "")).strip()
+        if normalize_classroom_text(r.get("classroom", "")) == classroom:
+            return first_record_value(r, ["group_id", "line_group_id", "groupId", "chat_id"])
 
     return ""
 
@@ -2733,10 +2745,16 @@ def student_has_pending_work(student_line_user_id):
 
     submissions = get_submissions_by_student(student_line_user_id)
     submitted_ids = set(str(s.get("assignment_id", "")).strip() for s in submissions)
+    
+    now = now_dt()
 
     for a in assignments:
         aid = str(a.get("assignment_id", "")).strip()
         if aid and aid not in submitted_ids and assignment_requires_submission(a):
+            # ตรวจสอบว่างานได้เปิดให้ส่งแล้ว
+            start_date = parse_date(str(a.get("start_date", "")).strip())
+            if start_date and now.date() < start_date:
+                continue
             return True
 
     return False
@@ -5209,41 +5227,67 @@ def api_teacher_announce():
 
         text = f"ประกาศห้อง {classroom}\n\n{message}"
 
+        group_sent = False
+        private_sent_count = 0
+        private_target_count = 0
+        private_failed_count = 0
+
         # ส่งเข้ากลุ่มถ้าผูกไว้
         group_id = get_class_group_id(classroom)
         print(f"[announce] group_id สำหรับห้อง {classroom} = {group_id}")
         if group_id:
             try:
                 print(f"[announce] กำลังส่งเข้ากลุ่ม {group_id}")
-                res = push_message(group_id, text)
+                res = push_message(group_id, text, enable_notification=True)
+                if res and res.status_code == 200:
+                    group_sent = True
                 print(f"[announce] ส่งเข้ากลุ่ม {classroom} สำเร็จ: {res.status_code if res else 'None'}")
             except Exception as e:
-                print(f"[announce] เก็บเข้ากลุ่ม {classroom} ล้มเหลว: {e}")
+                print(f"[announce] ส่งเข้ากลุ่ม {classroom} ล้มเหลว: {e}")
         else:
             print(f"[announce] ไม่พบ group_id สำหรับห้อง {classroom}")
 
         # ส่งส่วนตัวให้นักเรียนที่แอดบอทไว้
         students = get_students_by_classroom(classroom)
         print(f"[announce] จำนวนนักเรียนในห้อง {classroom}: {len(students) if students else 0}")
-        sent_count = 0
+        sent_private_ids = set()
         if students:
             for s in students:
-                sid = str(s.get("student_line_user_id", "")).strip()
-                if sid:
+                for sid in student_line_user_ids_for_record(s):
+                    if sid in sent_private_ids:
+                        continue
+                    sent_private_ids.add(sid)
+                    private_target_count += 1
                     try:
                         print(f"[announce] กำลังส่งส่วนตัวให้ {sid[:15]}...")
-                        res = push_message(sid, text)
+                        res = push_message(sid, text, enable_notification=True)
                         if res and res.status_code == 200:
-                            sent_count += 1
+                            private_sent_count += 1
+                        else:
+                            private_failed_count += 1
                         print(f"[announce] ส่งส่วนตัวให้นักเรียน {sid}: {res.status_code if res else 'None'}")
                     except Exception as e:
+                        private_failed_count += 1
                         print(f"[announce] ส่งส่วนตัวให้นักเรียน {sid} ล้มเหลว: {e}")
         
-        print(f"[announce] ส่งประกาศห้อง {classroom} เสร็จ: {sent_count} นักเรียน, group={'✓' if group_id else '✗'}")
+        print(f"[announce] ส่งประกาศห้อง {classroom} เสร็จ: กลุ่ม={'✓' if group_sent else '✗'}, ส่วนตัว={private_sent_count}/{private_target_count} คน")
+
+        if group_id:
+            group_text = "ส่งเข้ากลุ่มเรียบร้อย" if group_sent else "ส่งเข้ากลุ่มไม่สำเร็จ"
+        else:
+            group_text = "ยังไม่ได้ผูกกลุ่ม"
+        message_text = f"บันทึกประกาศเรียบร้อยแล้ว\nกลุ่ม: {group_text}\nส่วนตัว: ส่งสำเร็จ {private_sent_count}/{private_target_count} คน"
+        if private_failed_count:
+            message_text += f" (ไม่สำเร็จ {private_failed_count} คน)"
 
         return jsonify({
             "success": True,
-            "message": "ส่งประกาศเรียบร้อยแล้ว",
+            "message": message_text,
+            "group_sent": group_sent,
+            "group_id": group_id,
+            "private_sent_count": private_sent_count,
+            "private_target_count": private_target_count,
+            "private_failed_count": private_failed_count,
         })
 
     except Exception as e:
@@ -5911,11 +5955,12 @@ def api_teacher_score_visibility_post():
 # =========================================================
 
 def get_students_by_classroom(classroom):
+    classroom = normalize_classroom_text(classroom)
     records = get_sheet_records("students")
 
     return sort_students_by_code([
         r for r in records
-        if str(r.get("classroom", "")).strip() == str(classroom).strip()
+        if normalize_classroom_text(r.get("classroom", "")) == classroom
     ])
 
 
@@ -6321,11 +6366,10 @@ def api_student_assignments():
                     comment_idx = assignment_start_idx + idx * assignment_col_count + comment_offset
                     score = str(row[score_idx]).strip() if score_idx < len(row) else ""
                     comment = str(row[comment_idx]).strip() if comment_idx < len(row) else ""
-                    if score or comment:
-                        classroom_summary_scores[assignment_id] = {
-                            "score": score,
-                            "teacher_comment": comment,
-                        }
+                    classroom_summary_scores[assignment_id] = {
+                        "score": score,
+                        "teacher_comment": comment,
+                    }
                 break
     except Exception as e:
         pass
@@ -7576,7 +7620,7 @@ def build_deadline_mention_messages(classroom, assignment, pending_students):
 
             if user_id:
                 key = f"m{chunk_index}_{student_index}"
-                text += f"- {label_text} {{{key}}}\n"
+                text += "- " + label_text + " {" + key + "}\n"
                 substitution[key] = {
                     "type": "mention",
                     "mentionee": {
@@ -7614,8 +7658,17 @@ def build_deadline_mention_message(classroom, assignment, pending_students):
 
 
 def push_message_batches(to, messages):
+    if not to:
+        print("[push_message_batches] Warning: 'to' is empty")
+        return []
+    
+    if not messages:
+        print("[push_message_batches] Warning: 'messages' is empty")
+        return []
+    
     results = []
     for message_batch in chunks(messages, LINE_PUSH_MESSAGES_PER_REQUEST):
+        print(f"[push_message_batches] ส่งไปยัง {to[:20]}... จำนวนข้อความ: {len(message_batch)}")
         res = push_messages(to, message_batch)
         results.append({
             "status": res.status_code if res else None,
@@ -7728,7 +7781,11 @@ def notify_deadline_for_assignment(
     group_results = []
 
     if group_id:
+        print(f"[deadline] ส่งแจ้งเตือนเข้ากลุ่ม {group_id} สำหรับห้อง {classroom}, จำนวนข้อความ: {len(group_messages)}")
         group_results = push_message_batches(group_id, group_messages)
+        print(f"[deadline] ส่งเข้ากลุ่มเสร็จ: {group_results}")
+    else:
+        print(f"[deadline] ไม่พบ group_id สำหรับห้อง {classroom}")
 
     due_dt = assignment_due_datetime(assignment)
     overdue = bool(due_dt and now_dt().replace(tzinfo=None) > due_dt)
@@ -7772,6 +7829,12 @@ def notify_deadline_for_assignment(
     except Exception as e:
         print("[deadline log] Error:", e)
 
+    group_sent_count = sum(
+        1
+        for r in group_results
+        if r.get("status") and 200 <= int(r.get("status")) < 300
+    )
+
     return {
         "success": True,
         "message": "sent",
@@ -7782,6 +7845,7 @@ def notify_deadline_for_assignment(
         "pending_count": len(pending_students),
         "group_id": group_id,
         "group_message_count": len(group_messages),
+        "group_sent_count": group_sent_count,
         "group_status": group_results[0].get("status") if group_results else None,
         "group_text": group_results[0].get("text") if group_results else None,
         "group_results": group_results,

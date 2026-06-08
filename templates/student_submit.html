@@ -762,24 +762,29 @@
         if (!sub) {
             return "metric-score-missing";
         }
-        if (submissionScoreValue(sub)) {
-            return "metric-score";
-        }
-        return "metric-score-pending";
+
+        return submissionScoreValue(sub) ? "metric-score" : "metric-score-pending";
     }
 
     function commentValueText(item) {
         const sub = item.submission;
-        return sub && String(sub.teacher_comment || "").trim()
+        if (!sub) {
+            return "-";
+        }
+
+        const comment = sub.teacher_comment !== undefined && sub.teacher_comment !== null
             ? String(sub.teacher_comment).trim()
-            : "ยังไม่มีคอมเมนต์จากครู";
+            : "";
+        return comment || "ยังไม่มีคอมเมนต์";
     }
 
     function commentMetricClass(item) {
         const sub = item.submission;
-        return sub && String(sub.teacher_comment || "").trim()
-            ? "metric-comment"
-            : "metric-muted";
+        if (!sub) {
+            return "metric-muted";
+        }
+
+        return commentValueText(item) === "ยังไม่มีคอมเมนต์" ? "metric-muted" : "metric-comment";
     }
 
     function renderScoreList() {
@@ -809,9 +814,18 @@
                 appendDetailLine(meta, "ส่งเมื่อ", sub.submitted_at);
             }
 
+            // แสดงคะแนนเสมอ แม้ครูไม่ได้เปิดแสดง
             if (sub) {
                 appendMetric(meta, "คะแนน", scoreValueText(item), scoreMetricClass(item));
                 appendMetric(meta, "คอมเมนต์ครู", commentValueText(item), commentMetricClass(item));
+            } else {
+                // ถ้าไม่มี submission แต่มีคะแนน จากชีต ให้แสดงเพื่อว่
+                const scoreVal = item.score ? String(item.score).trim() : "";
+                const commentVal = item.teacher_comment ? String(item.teacher_comment).trim() : "";
+                if (scoreVal || commentVal) {
+                    appendMetric(meta, "คะแนน", scoreVal || "ยังไม่มีคะแนน", scoreVal ? "metric-score" : "metric-score-missing");
+                    appendMetric(meta, "คอมเมนต์ครู", commentVal || "ยังไม่มีคอมเมนต์", commentVal ? "metric-comment" : "metric-muted");
+                }
             }
 
             const status = document.createElement("span");
@@ -845,6 +859,16 @@
             const data = await res.json();
 
             console.log("[DEBUG] loadAssignments response:", data);
+            if (data.assignments) {
+                data.assignments.forEach((a, i) => {
+                    console.log(`[DEBUG] Assignment ${i}:`, {
+                        title: a.title,
+                        has_submission: !!a.submission,
+                        submission: a.submission,
+                        show_score_to_students: a.show_score_to_students,
+                    });
+                });
+            }
 
             select.innerHTML = "";
 
@@ -944,12 +968,13 @@
         appendDetailLine(box, "ส่งเป็นลิงก์", assignmentAllowsLink(item) ? "ได้" : "ไม่ได้");
         appendMetric(box, "สถานะของฉัน", submissionTimingText(item), submissionStatusClass(item));
 
-        if (sub) {
-            appendDetailLine(box, "ส่งล่าสุด", sub.submitted_at || "-");
-            appendDetailLine(box, "แก้ไขได้ถึง", item.edit_deadline_text || item.due_text || item.due_date || "-");
-            appendMetric(box, "คะแนน", scoreValueText(item), scoreMetricClass(item));
-            appendMetric(box, "คอมเมนต์ครู", commentValueText(item), commentMetricClass(item));
-        }
+            // แสดงคะแนนเสมอ แม้ครูไม่ได้เปิดแสดง
+            if (sub) {
+                appendDetailLine(box, "ส่งล่าสุด", sub.submitted_at || "-");
+                appendDetailLine(box, "แก้ไขได้ถึง", item.edit_deadline_text || item.due_text || item.due_date || "-");
+                appendMetric(box, "คะแนน", scoreValueText(item), scoreMetricClass(item));
+                appendMetric(box, "คอมเมนต์ครู", commentValueText(item), commentMetricClass(item));
+            }
     }
 
     async function submitWork() {

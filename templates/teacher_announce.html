@@ -652,7 +652,7 @@
             const data = await res.json();
 
             if (data.success) {
-                showMessage("บันทึกประกาศเรียบร้อยแล้ว\nนักเรียนจะเปิดดูได้จากเมนูประกาศ", "success");
+                showMessage(data.message || "ส่งประกาศเรียบร้อยแล้ว", "success");
                 btn.innerText = "ส่งประกาศสำเร็จ";
 
                 setTimeout(() => {
