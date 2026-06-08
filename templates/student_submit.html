@@ -474,13 +474,83 @@
         box.style.display = "block";
     }
 
-    function setMode(mode) {
+    let summaryScoresLoaded = false;
+    let summaryScoresLoading = false;
+
+    async function setMode(mode) {
         const showScores = mode === "scores";
         document.getElementById("submitPanel").hidden = showScores;
         document.getElementById("scorePanel").hidden = !showScores;
         document.getElementById("submitTab").classList.toggle("active", !showScores);
         document.getElementById("scoreTab").classList.toggle("active", showScores);
         document.getElementById("messageBox").style.display = "none";
+
+        if (showScores) {
+            await ensureSummaryScoresLoaded();
+            renderScoreList();
+        }
+    }
+
+    function applySummaryScoresToAssignments(scores) {
+        const scoreMap = scores || {};
+        assignments.forEach(item => {
+            const aid = String(item.assignment_id || "").trim();
+            const extra = scoreMap[aid];
+            if (!extra) {
+                return;
+            }
+
+            if (item.submission) {
+                if (extra.score) {
+                    item.submission.score = extra.score;
+                }
+                if (extra.teacher_comment) {
+                    item.submission.teacher_comment = extra.teacher_comment;
+                }
+                return;
+            }
+
+            item.score = extra.score || "";
+            item.teacher_comment = extra.teacher_comment || "";
+        });
+    }
+
+    async function ensureSummaryScoresLoaded(forceReload = false) {
+        if (!lineUserId) {
+            return;
+        }
+        if (!forceReload && summaryScoresLoaded) {
+            return;
+        }
+        if (summaryScoresLoading) {
+            return;
+        }
+
+        summaryScoresLoading = true;
+        const scoreList = document.getElementById("scoreList");
+        if (!summaryScoresLoaded) {
+            scoreList.textContent = "กำลังโหลดคะแนน...";
+        }
+
+        try {
+            const res = await fetch(
+                "/api/student/assignment-summary-scores?student_line_user_id="
+                + encodeURIComponent(lineUserId)
+            );
+            const data = await res.json();
+            if (!data.success) {
+                throw new Error(data.message || "โหลดคะแนนไม่สำเร็จ");
+            }
+
+            applySummaryScoresToAssignments(data.scores || {});
+            summaryScoresLoaded = true;
+        } catch (error) {
+            if (!summaryScoresLoaded) {
+                scoreList.textContent = "โหลดคะแนนไม่สำเร็จ: " + error.message;
+            }
+        } finally {
+            summaryScoresLoading = false;
+        }
     }
 
     function editSubmissionFromScore(assignmentId) {
@@ -880,6 +950,7 @@
             }
 
             assignments = data.assignments || [];
+            summaryScoresLoaded = false;
 
             if (assignments.length === 0) {
                 setSingleOption(select, "ยังไม่มีงานที่ครูสั่ง");
@@ -1077,8 +1148,13 @@
             const data = await res.json();
 
             if (data.success) {
-                showMessage((data.edited ? "แก้ไขงานเรียบร้อยแล้ว" : "ส่งงานเรียบร้อยแล้ว") + "\nระบบบันทึกลิงก์งานลงชีตให้แล้ว", "success");
+                const sheetNote = data.queued
+                    ? "\nระบบกำลังซิงก์เข้า Google Sheets ให้อัตโนมัติ"
+                    : "\nระบบบันทึกลิงก์งานลงชีตให้แล้ว";
+                showMessage((data.edited ? "แก้ไขงานเรียบร้อยแล้ว" : "ส่งงานเรียบร้อยแล้ว") + sheetNote, "success");
                 btn.innerText = data.edited ? "แก้ไขสำเร็จ" : "ส่งงานสำเร็จ";
+                summaryScoresLoaded = false;
+                await loadAssignments();
 
                 setTimeout(() => {
                     if (liff.isInClient()) {

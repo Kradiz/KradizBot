@@ -167,6 +167,17 @@ def call_google_sheet_api(fn):
     return container.get("result")
 
 
+def call_google_drive_api(fn):
+    """Drive API calls skip the Sheets rate-limit queue to avoid upload delays."""
+    return _call_google_sheet_api_impl(fn)
+
+
+def _schedule_background_task(target, *args, **kwargs):
+    thread = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=True)
+    thread.start()
+    return thread
+
+
 def clone_sheet_rows(rows):
     return [dict(row) for row in (rows or [])]
 
@@ -180,11 +191,24 @@ def invalidate_shared_sheet_cache(sheet_name):
             _sheet_shared_cache.pop(key, None)
 
 
+def _prune_expired_shared_sheet_cache(now=None):
+    """Drop stale cache entries so expired data does not stay in RAM."""
+    now = now or time.monotonic()
+    expired_keys = [
+        key
+        for key, cached in _sheet_shared_cache.items()
+        if now - cached["loaded_at"] >= SHEET_CACHE_TTL_SECONDS
+    ]
+    for key in expired_keys:
+        _sheet_shared_cache.pop(key, None)
+
+
 def get_shared_sheet_cache(cache_type, sheet_name, loader, clone_value=None):
     now = time.monotonic()
     key = (cache_type, sheet_name)
 
     with _sheet_shared_cache_lock:
+        _prune_expired_shared_sheet_cache(now)
         cached = _sheet_shared_cache.get(key)
         if cached and now - cached["loaded_at"] < SHEET_CACHE_TTL_SECONDS:
             value = cached["value"]
@@ -855,6 +879,30 @@ def flush_sheet_append_buffers():
             print(f"[flush_sheet_append_buffers] Failed to flush {len(rows)} rows to {sheet_name}:", e)
 
 
+def flush_sheet_append_buffer(sheet_name):
+    """Flush buffered append rows for a single worksheet."""
+    sheet_name = str(sheet_name or "").strip()
+    if not sheet_name:
+        return
+
+    to_flush = []
+    with _sheet_append_buffers_lock:
+        buf = _sheet_append_buffers.get(sheet_name)
+        if buf and buf["rows"]:
+            rows = buf["rows"][:]
+            buf["rows"] = []
+            to_flush.append((sheet_name, rows, buf.get("value_input_option", "USER_ENTERED")))
+
+    for flush_sheet_name, rows, value_input_option in to_flush:
+        try:
+            ws = get_worksheet(flush_sheet_name)
+            call_google_sheet_api(
+                lambda: ws.append_rows(rows, value_input_option=value_input_option)
+            )
+        except Exception as e:
+            print(f"[flush_sheet_append_buffer] Failed to flush {len(rows)} rows to {flush_sheet_name}:", e)
+
+
 def invalidate_sheet_cache(sheet_name):
     invalidate_shared_sheet_cache(sheet_name)
 
@@ -865,6 +913,9 @@ def invalidate_sheet_cache(sheet_name):
         cache = getattr(g, attr, None)
         if cache is not None:
             cache.pop(sheet_name, None)
+
+    if sheet_name == "assignments":
+        g._assignments_maps = None
 
 
 def get_sheet_records(sheet_name):
@@ -924,6 +975,7 @@ def get_drive_service():
 
 LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply"
 LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
+LINE_MULTICAST_URL = "https://api.line.me/v2/bot/message/multicast"
 LINE_RICH_MENU_LINK_URL = "https://api.line.me/v2/bot/user/{user_id}/richmenu/{rich_menu_id}"
 LINE_RICH_MENU_UNLINK_URL = "https://api.line.me/v2/bot/user/{user_id}/richmenu"
 
@@ -1020,6 +1072,46 @@ def push_messages(to, messages):
     except Exception as e:
         print("[push_messages] Error:", e)
         return None
+
+
+def push_multicast(user_ids, messages):
+    user_ids = [str(user_id).strip() for user_id in (user_ids or []) if str(user_id).strip()]
+    if not user_ids or not messages:
+        return []
+
+    results = []
+    for id_batch in chunks(user_ids, 500):
+        for message_batch in chunks(messages, LINE_PUSH_MESSAGES_PER_REQUEST):
+            payload = {
+                "to": id_batch,
+                "messages": message_batch,
+            }
+            try:
+                r = requests.post(
+                    LINE_MULTICAST_URL,
+                    headers=line_headers(),
+                    json=payload,
+                    timeout=15,
+                )
+                print(
+                    f"[push_multicast] recipients={len(id_batch)} "
+                    f"messages={len(message_batch)} status={r.status_code}"
+                )
+                results.append({
+                    "status": r.status_code,
+                    "text": r.text,
+                    "recipient_count": len(id_batch),
+                    "message_count": len(message_batch),
+                })
+            except Exception as e:
+                print("[push_multicast] Error:", e)
+                results.append({
+                    "status": None,
+                    "text": str(e),
+                    "recipient_count": len(id_batch),
+                    "message_count": len(message_batch),
+                })
+    return results
 
 
 def link_rich_menu_to_user(user_id, rich_menu_id):
@@ -1507,6 +1599,212 @@ def ensure_headers(ws, headers):
         invalidate_sheet_cache(sheet_name)
 
     return current
+
+
+def normalize_sheet_headers(header_row, width):
+    headers = []
+    for index in range(width):
+        text = str(header_row[index]).strip() if index < len(header_row) else ""
+        headers.append(text or f"__col_{index + 1}__")
+    return headers
+
+
+def build_reordered_headers(current_headers, canonical_headers):
+    canonical_headers = list(canonical_headers or [])
+    reordered = [header for header in canonical_headers if header in current_headers]
+
+    for header in current_headers:
+        if header not in reordered and not str(header).startswith("__col_"):
+            reordered.append(header)
+
+    for header in canonical_headers:
+        if header not in reordered:
+            reordered.append(header)
+
+    for header in current_headers:
+        if str(header).startswith("__col_") and header not in reordered:
+            reordered.append(header)
+
+    return reordered
+
+
+def remap_sheet_rows(rows, old_headers, new_headers):
+    remapped = []
+    for row in rows:
+        row_map = {}
+        for index, header in enumerate(old_headers):
+            row_map[header] = row[index] if index < len(row) else ""
+        remapped.append([row_map.get(header, "") for header in new_headers])
+    return remapped
+
+
+def display_sheet_headers(headers):
+    return ["" if str(header).startswith("__col_") else header for header in headers]
+
+
+def reorder_worksheet_headers(ws, canonical_headers):
+    sheet_name = ws.title
+    values = call_google_sheet_api(lambda: ws.get_all_values())
+
+    if not values:
+        headers = list(canonical_headers)
+        call_google_sheet_api(
+            lambda: ws.update("1:1", [headers], value_input_option="USER_ENTERED")
+        )
+        invalidate_sheet_cache(sheet_name)
+        return {
+            "sheet": sheet_name,
+            "changed": True,
+            "columns": len(headers),
+            "rows": 0,
+            "message": f"สร้างหัวตาราง {sheet_name} แล้ว",
+        }
+
+    width = max(len(row) for row in values)
+    old_headers = normalize_sheet_headers(values[0], width)
+    new_headers = build_reordered_headers(old_headers, canonical_headers)
+
+    if old_headers == new_headers:
+        return {
+            "sheet": sheet_name,
+            "changed": False,
+            "columns": len(new_headers),
+            "rows": max(0, len(values) - 1),
+            "message": f"ชีต {sheet_name} เรียงหัวตารางอยู่แล้ว",
+        }
+
+    data_rows = remap_sheet_rows(values[1:], old_headers, new_headers)
+    new_values = [display_sheet_headers(new_headers)] + data_rows
+    end_col = col_letter(len(new_headers))
+    end_row = len(new_values)
+    range_name = f"A1:{end_col}{end_row}"
+
+    call_google_sheet_api(
+        lambda: ws.update(range_name, new_values, value_input_option="USER_ENTERED")
+    )
+    invalidate_sheet_cache(sheet_name)
+
+    return {
+        "sheet": sheet_name,
+        "changed": True,
+        "columns": len(new_headers),
+        "rows": len(data_rows),
+        "message": f"เรียงหัวตาราง {sheet_name} แล้ว ({len(data_rows)} แถว)",
+    }
+
+
+REORDER_SHEET_INTERVAL_SECONDS = float(os.getenv("REORDER_SHEET_INTERVAL_SECONDS", "1.2") or "1.2")
+
+
+def _format_sheet_reorder_summary(changed, unchanged, failed):
+    lines = ["เรียงหัวตารางครบแล้ว"]
+    if changed:
+        lines.append("เปลี่ยน: " + ", ".join(changed))
+    if unchanged:
+        lines.append("ไม่เปลี่ยน: " + ", ".join(unchanged))
+    if failed:
+        lines.append(
+            "ไม่สำเร็จ: "
+            + ", ".join(f"{item['sheet']} ({item['message']})" for item in failed)
+        )
+    return "\n".join(lines)
+
+
+def reorder_all_base_sheet_headers_sequential():
+    changed = []
+    unchanged = []
+    failed = []
+
+    for index, (name, headers) in enumerate(BASE_SHEETS.items()):
+        if index > 0 and REORDER_SHEET_INTERVAL_SECONDS > 0:
+            time.sleep(REORDER_SHEET_INTERVAL_SECONDS)
+
+        try:
+            ws = get_worksheet(name)
+            result = reorder_worksheet_headers(ws, headers)
+            if result.get("changed"):
+                changed.append(name)
+            else:
+                unchanged.append(name)
+        except Exception as e:
+            failed.append({
+                "sheet": name,
+                "message": str(e),
+            })
+
+    return {
+        "success": not failed,
+        "changed": changed,
+        "unchanged": unchanged,
+        "failed": failed,
+        "message": _format_sheet_reorder_summary(changed, unchanged, failed),
+    }
+
+
+def _reorder_all_sheets_background(teacher_line_user_id):
+    try:
+        result = reorder_all_base_sheet_headers_sequential()
+        message = result.get("message", "เรียงหัวตารางเสร็จแล้ว")
+    except Exception as e:
+        print("[reorder_all_sheets_background] Error:", e)
+        message = f"เรียงหัวตารางไม่สำเร็จ\n{str(e)}"
+
+    if teacher_line_user_id:
+        try:
+            push_message(teacher_line_user_id, message)
+        except Exception as e:
+            print("[reorder_all_sheets_background push] Error:", e)
+
+
+def reorder_base_sheet_headers(sheet_name):
+    sheet_name = str(sheet_name or "").strip().lower()
+    if not sheet_name:
+        return reorder_all_base_sheet_headers_sequential()
+
+    if sheet_name not in BASE_SHEETS:
+        known_sheets = ", ".join(sorted(BASE_SHEETS.keys()))
+        return {
+            "success": False,
+            "message": f"ไม่พบชีต {sheet_name}\nชีตที่รองรับ: {known_sheets}",
+        }
+
+    try:
+        ws = get_worksheet(sheet_name)
+        result = reorder_worksheet_headers(ws, BASE_SHEETS[sheet_name])
+        return {
+            "success": True,
+            "sheet": sheet_name,
+            "changed": bool(result.get("changed")),
+            "message": result.get("message", f"เรียงหัวตาราง {sheet_name} แล้ว"),
+            "result": result,
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "sheet": sheet_name,
+            "message": f"เรียงหัวตาราง {sheet_name} ไม่สำเร็จ\n{str(e)}",
+        }
+
+
+def parse_sheet_header_command(text, prefixes):
+    text = str(text or "").strip()
+    if not text:
+        return None
+
+    for prefix in sorted(prefixes, key=len, reverse=True):
+        prefix_text = str(prefix).strip()
+        if not prefix_text:
+            continue
+
+        if text.upper() == prefix_text.upper():
+            return None
+
+        for separator in [" ", ":", "：", "-"]:
+            token = prefix_text + separator
+            if text.upper().startswith(token.upper()):
+                return text[len(token):].strip().lower()
+
+    return None
 
 
 def update_cell_raw(ws, row, col, value):
@@ -2732,6 +3030,23 @@ def mark_submission_in_classroom_sheet(classroom, student_line_user_id, assignme
 # Rich Menu Logic
 # =========================================================
 
+def student_submitted_assignment_ids(student_line_user_id):
+    submissions = get_submissions_by_student(student_line_user_id)
+    return {
+        str(s.get("assignment_id", "")).strip()
+        for s in submissions
+        if str(s.get("assignment_id", "")).strip()
+    }
+
+
+def assignment_is_open_for_submission(assignment, now=None):
+    now = now or now_dt()
+    start_date = parse_date(str(assignment.get("start_date", "")).strip())
+    if start_date and now.date() < start_date:
+        return False
+    return True
+
+
 def student_has_pending_work(student_line_user_id):
     student = get_student_by_line_user_id(student_line_user_id)
     if not student:
@@ -2743,18 +3058,17 @@ def student_has_pending_work(student_line_user_id):
     if not assignments:
         return False
 
-    submissions = get_submissions_by_student(student_line_user_id)
-    submitted_ids = set(str(s.get("assignment_id", "")).strip() for s in submissions)
-    
+    submitted_ids = student_submitted_assignment_ids(student_line_user_id)
     now = now_dt()
 
     for a in assignments:
         aid = str(a.get("assignment_id", "")).strip()
-        if aid and aid not in submitted_ids and assignment_requires_submission(a):
-            # ตรวจสอบว่างานได้เปิดให้ส่งแล้ว
-            start_date = parse_date(str(a.get("start_date", "")).strip())
-            if start_date and now.date() < start_date:
-                continue
+        if (
+            aid
+            and aid not in submitted_ids
+            and assignment_requires_submission(a)
+            and assignment_is_open_for_submission(a, now)
+        ):
             return True
 
     return False
@@ -2858,40 +3172,107 @@ def update_teacher_rich_menu(teacher_line_user_id):
 # Assignment / Submission Helpers
 # =========================================================
 
-def get_assignments_by_classroom(classroom):
+def _get_assignments_maps():
+    if has_request_context():
+        cached_maps = getattr(g, "_assignments_maps", None)
+        if cached_maps is not None:
+            return cached_maps
+
     records = get_sheet_records("assignments")
+    by_id = {}
+    by_classroom = {}
+    rows_by_id = {}
 
-    result = []
-    for r in records:
-        if str(r.get("classroom", "")).strip() == str(classroom).strip():
-            item = add_assignment_due_metadata(dict(r))
-            result.append(add_assignment_score_metadata(item))
+    for row_i, r in enumerate(records, start=2):
+        assignment_id = str(r.get("assignment_id", "")).strip()
+        item = add_assignment_score_metadata(add_assignment_due_metadata(dict(r)))
+        if assignment_id:
+            by_id[assignment_id] = item
+            rows_by_id[assignment_id] = (row_i, r)
 
-    return result
+        classroom = str(r.get("classroom", "")).strip()
+        if classroom:
+            by_classroom.setdefault(classroom, []).append(item)
+
+    maps = (by_id, by_classroom, rows_by_id)
+    if has_request_context():
+        g._assignments_maps = maps
+    return maps
+
+
+def get_assignments_by_classroom(classroom):
+    _, by_classroom, _ = _get_assignments_maps()
+    return [dict(item) for item in by_classroom.get(str(classroom).strip(), [])]
 
 
 def get_assignment_by_id(assignment_id):
-    records = get_sheet_records("assignments")
-
-    for r in records:
-        if str(r.get("assignment_id", "")).strip() == str(assignment_id).strip():
-            item = add_assignment_due_metadata(dict(r))
-            return add_assignment_score_metadata(item)
-
-    return None
+    by_id, _, _ = _get_assignments_maps()
+    item = by_id.get(str(assignment_id or "").strip())
+    return dict(item) if item else None
 
 
 def find_assignment_row(assignment_id):
-    records = get_sheet_records("assignments")
-
-    for row_i, r in enumerate(records, start=2):
-        if str(r.get("assignment_id", "")).strip() == str(assignment_id).strip():
-            return row_i, r
-
-    return None, None
+    _, _, rows_by_id = _get_assignments_maps()
+    return rows_by_id.get(str(assignment_id or "").strip(), (None, None))
 
 
-def get_submissions_by_student(student_line_user_id):
+def get_classroom_summary_scores_for_student(classroom, student_line_user_id, assignments):
+    classroom = normalize_classroom_text(classroom)
+    student_line_user_id = str(student_line_user_id or "").strip()
+    if not classroom or not student_line_user_id or not assignments:
+        return {}
+
+    summary_scores = {}
+    try:
+        summary_ws = get_worksheet(classroom_sheet_name(classroom))
+        summary_values = summary_ws.get_all_values()
+        if len(summary_values) <= 3:
+            return summary_scores
+
+        summary_header_row = summary_values[2] if len(summary_values) > 2 else []
+        try:
+            assignment_start_idx = next(
+                i for i, value in enumerate(summary_header_row)
+                if str(value).strip() == "ตรวจเวลา"
+            )
+        except StopIteration:
+            assignment_start_idx = 3
+
+        summary_has_auto_score = (
+            len(summary_header_row) > assignment_start_idx + 2
+            and str(summary_header_row[assignment_start_idx + 2]).strip() == "คะแนนส่ง"
+        )
+        assignment_col_count = 6 if summary_has_auto_score else 5
+        score_offset = 3 if summary_has_auto_score else 2
+        comment_offset = 4 if summary_has_auto_score else 3
+
+        for row in summary_values[3:]:
+            if len(row) < 3:
+                continue
+            if str(row[2]).strip() != student_line_user_id:
+                continue
+
+            for idx, assignment in enumerate(assignments):
+                assignment_id = str(assignment.get("assignment_id", "")).strip()
+                if not assignment_id:
+                    continue
+                score_idx = assignment_start_idx + idx * assignment_col_count + score_offset
+                comment_idx = assignment_start_idx + idx * assignment_col_count + comment_offset
+                score = str(row[score_idx]).strip() if score_idx < len(row) else ""
+                comment = str(row[comment_idx]).strip() if comment_idx < len(row) else ""
+                if score or comment:
+                    summary_scores[assignment_id] = {
+                        "score": score,
+                        "teacher_comment": comment,
+                    }
+            break
+    except Exception as e:
+        print("[get_classroom_summary_scores_for_student] Error:", e)
+
+    return summary_scores
+
+
+def get_submissions_by_student(student_line_user_id, prefer_db_only=False):
     student_line_user_id = str(student_line_user_id or "").strip()
     student = get_student_by_line_user_id(student_line_user_id)
     student_ids = student_line_user_ids_for_record(student) or [student_line_user_id]
@@ -2899,6 +3280,15 @@ def get_submissions_by_student(student_line_user_id):
     db_submissions = []
     for sid in student_ids:
         db_submissions.extend(get_submissions_from_db(sid))
+
+    if prefer_db_only and db_enabled() and db_submissions:
+        merged = {}
+        for r in db_submissions:
+            assignment_id = str(r.get("assignment_id", "")).strip()
+            if assignment_id:
+                merged[assignment_id] = r
+        return list(merged.values())
+
     try:
         records = get_sheet_records("submissions")
         sheet_submissions = [
@@ -3378,6 +3768,33 @@ def student_score_summary_for_announcement(student):
     return result
 
 
+def _submission_index_key(record):
+    sid = str(record.get("student_line_user_id", "")).strip()
+    aid = str(record.get("assignment_id", "")).strip()
+    if not sid or not aid:
+        return None
+    return (sid, aid)
+
+
+def _submission_matches_index_filters(record, classroom, assignment_id_set, student_id_set):
+    row_classroom = str(record.get("classroom", "")).strip()
+    if classroom and row_classroom and row_classroom != classroom:
+        return False
+
+    sid = str(record.get("student_line_user_id", "")).strip()
+    aid = str(record.get("assignment_id", "")).strip()
+    if not sid or not aid:
+        return False
+
+    if student_id_set is not None and sid not in student_id_set:
+        return False
+
+    if assignment_id_set is not None and aid not in assignment_id_set:
+        return False
+
+    return True
+
+
 def get_submissions_index(classroom=None, assignment_ids=None, student_line_user_ids=None):
     classroom = str(classroom or "").strip()
     assignment_id_set = None
@@ -3388,29 +3805,23 @@ def get_submissions_index(classroom=None, assignment_ids=None, student_line_user
     if student_line_user_ids is not None:
         student_id_set = {str(sid).strip() for sid in student_line_user_ids if str(sid).strip()}
 
-    records = get_sheet_records("submissions")
+    result = {}
+
     if db_enabled() and student_id_set is not None:
         for sid in student_id_set:
-            records.extend(get_submissions_from_db(sid))
+            for r in get_submissions_from_db(sid):
+                if not _submission_matches_index_filters(r, classroom, assignment_id_set, student_id_set):
+                    continue
+                key = _submission_index_key(r)
+                if key:
+                    result[key] = r
 
-    result = {}
-    for r in records:
-        row_classroom = str(r.get("classroom", "")).strip()
-        if classroom and row_classroom != classroom:
+    for r in get_sheet_records("submissions"):
+        if not _submission_matches_index_filters(r, classroom, assignment_id_set, student_id_set):
             continue
-
-        sid = str(r.get("student_line_user_id", "")).strip()
-        aid = str(r.get("assignment_id", "")).strip()
-        if not sid or not aid:
-            continue
-
-        if student_id_set is not None and sid not in student_id_set:
-            continue
-
-        if assignment_id_set is not None and aid not in assignment_id_set:
-            continue
-
-        result[(sid, aid)] = r
+        key = _submission_index_key(r)
+        if key and key not in result:
+            result[key] = r
 
     return result
 
@@ -3573,10 +3984,25 @@ def clean_drive_name(value, fallback="ไม่ระบุชื่อ"):
     return name or fallback
 
 
+_drive_folder_cache = {}
+_drive_folder_cache_lock = threading.Lock()
+
+
 def find_or_create_drive_folder(folder_name, parent_id):
     folder_name = clean_drive_name(folder_name, "โฟลเดอร์")
+    cache_key = (str(parent_id or "").strip(), folder_name)
+    with _drive_folder_cache_lock:
+        cached_folder_id = _drive_folder_cache.get(cache_key)
+        if cached_folder_id:
+            return cached_folder_id
+
     folder_lock = get_operation_lock(("drive_folder", parent_id, folder_name))
     with folder_lock:
+        with _drive_folder_cache_lock:
+            cached_folder_id = _drive_folder_cache.get(cache_key)
+            if cached_folder_id:
+                return cached_folder_id
+
         service = get_drive_service()
         folder_name_for_query = escape_drive_query_value(folder_name)
         parent_id_for_query = escape_drive_query_value(parent_id)
@@ -3588,7 +4014,7 @@ def find_or_create_drive_folder(folder_name, parent_id):
             f"and trashed=false"
         )
 
-        res = call_google_sheet_api(
+        res = call_google_drive_api(
             lambda: service.files().list(
                 q=query,
                 spaces="drive",
@@ -3600,7 +4026,10 @@ def find_or_create_drive_folder(folder_name, parent_id):
 
         files = res.get("files", [])
         if files:
-            return files[0]["id"]
+            folder_id = files[0]["id"]
+            with _drive_folder_cache_lock:
+                _drive_folder_cache[cache_key] = folder_id
+            return folder_id
 
         metadata = {
             "name": folder_name,
@@ -3608,7 +4037,7 @@ def find_or_create_drive_folder(folder_name, parent_id):
             "parents": [parent_id],
         }
 
-        folder = call_google_sheet_api(
+        folder = call_google_drive_api(
             lambda: service.files().create(
                 body=metadata,
                 fields="id",
@@ -3616,7 +4045,10 @@ def find_or_create_drive_folder(folder_name, parent_id):
             ).execute()
         )
 
-        return folder["id"]
+        folder_id = folder["id"]
+        with _drive_folder_cache_lock:
+            _drive_folder_cache[cache_key] = folder_id
+        return folder_id
 
 
 def drive_file_id_from_url(url):
@@ -3666,7 +4098,7 @@ def update_drive_file(file_id, file_bytes=None, file_name=None, file_stream=None
         resumable=False,
     )
 
-    file = call_google_sheet_api(
+    file = call_google_drive_api(
         lambda: service.files().update(
             fileId=file_id,
             body={"name": safe_file_name},
@@ -3723,7 +4155,7 @@ def upload_file_to_drive(file_bytes=None, file_name=None, classroom=None, assign
         "parents": [assignment_folder_id],
     }
 
-    uploaded = call_google_sheet_api(
+    uploaded = call_google_drive_api(
         lambda: service.files().create(
             body=metadata,
             media_body=media,
@@ -3733,9 +4165,10 @@ def upload_file_to_drive(file_bytes=None, file_name=None, classroom=None, assign
     )
 
     file_id = uploaded["id"]
+    web_view_link = str(uploaded.get("webViewLink", "")).strip()
 
     try:
-        call_google_sheet_api(
+        call_google_drive_api(
             lambda: service.permissions().create(
                 fileId=file_id,
                 body={
@@ -3748,7 +4181,10 @@ def upload_file_to_drive(file_bytes=None, file_name=None, classroom=None, assign
     except Exception as e:
         print("[drive permission] Error:", e)
 
-    file = call_google_sheet_api(
+    if web_view_link:
+        return web_view_link
+
+    file = call_google_drive_api(
         lambda: service.files().get(
             fileId=file_id,
             fields="id, webViewLink",
@@ -6081,6 +6517,33 @@ def write_registration_to_sheets(student_line_user_id, student_name, student_cod
         return "created"
 
 
+def _background_sync_submission_to_sheets(payload):
+    if not payload:
+        return
+
+    try:
+        write_submission_to_sheets(payload)
+        mark_db_sheets_status(
+            "student_submissions",
+            {
+                "student_line_user_id": payload.get("student_line_user_id", ""),
+                "assignment_id": payload.get("assignment_id", ""),
+            },
+            "synced",
+        )
+    except Exception as e:
+        print("[background sync submission] Error:", e)
+        mark_db_sheets_status(
+            "student_submissions",
+            {
+                "student_line_user_id": payload.get("student_line_user_id", ""),
+                "assignment_id": payload.get("assignment_id", ""),
+            },
+            "sheet_failed",
+            e,
+        )
+
+
 def write_submission_to_sheets(data):
     student_line_user_id = str(data.get("student_line_user_id", "")).strip()
     assignment_id = str(data.get("assignment_id", "")).strip()
@@ -6144,6 +6607,8 @@ def write_submission_to_sheets(data):
             values["assignment_title"],
             values["file_url"],
         )
+        if action == "created":
+            flush_sheet_append_buffer("submissions")
         return action
 
 
@@ -6319,7 +6784,10 @@ def api_student_assignments():
 
     classroom = str(student.get("classroom", "")).strip()
     assignments = get_assignments_by_classroom(classroom)
-    submissions = get_submissions_by_student(student_line_user_id)
+    submissions = get_submissions_by_student(
+        student_line_user_id,
+        prefer_db_only=db_enabled(),
+    )
 
     submitted_ids = set(str(s.get("assignment_id", "")).strip() for s in submissions)
     submission_by_assignment = {
@@ -6327,52 +6795,6 @@ def api_student_assignments():
         for s in submissions
         if str(s.get("assignment_id", "")).strip()
     }
-
-    # ดึงคะแนนจากชีตสรุปห้องเพื่อให้เห็นคะแนนที่ยังไม่ซิงก์
-    classroom_summary_scores = {}
-    try:
-        summary_ws = get_worksheet(classroom_sheet_name(classroom))
-        summary_values = summary_ws.get_all_values()
-        if len(summary_values) > 3:
-            summary_header_row = summary_values[2] if len(summary_values) > 2 else []
-            try:
-                assignment_start_idx = next(
-                    i for i, value in enumerate(summary_header_row)
-                    if str(value).strip() == "ตรวจเวลา"
-                )
-            except StopIteration:
-                assignment_start_idx = 3
-
-            summary_has_auto_score = (
-                len(summary_header_row) > assignment_start_idx + 2
-                and str(summary_header_row[assignment_start_idx + 2]).strip() == "คะแนนส่ง"
-            )
-            assignment_col_count = 6 if summary_has_auto_score else 5
-            score_offset = 3 if summary_has_auto_score else 2
-            comment_offset = 4 if summary_has_auto_score else 3
-
-            for sheet_row, row in enumerate(summary_values[3:]):
-                if len(row) < 3:
-                    continue
-                sheet_student_id = str(row[2]).strip()
-                if sheet_student_id != student_line_user_id:
-                    continue
-
-                for idx, assignment in enumerate(assignments):
-                    assignment_id = str(assignment.get("assignment_id", "")).strip()
-                    if not assignment_id:
-                        continue
-                    score_idx = assignment_start_idx + idx * assignment_col_count + score_offset
-                    comment_idx = assignment_start_idx + idx * assignment_col_count + comment_offset
-                    score = str(row[score_idx]).strip() if score_idx < len(row) else ""
-                    comment = str(row[comment_idx]).strip() if comment_idx < len(row) else ""
-                    classroom_summary_scores[assignment_id] = {
-                        "score": score,
-                        "teacher_comment": comment,
-                    }
-                break
-    except Exception as e:
-        pass
 
     result = []
     for a in assignments:
@@ -6386,33 +6808,17 @@ def api_student_assignments():
         sub = submission_by_assignment.get(aid)
         item["can_edit_submission"] = bool(sub and submission_edit_allowed(item))
         item["edit_deadline_text"] = assignment_due_text(item)
-        
-        # ดึงคะแนนจากชีตสรุปห้องถ้ามี
-        score_from_sheet = classroom_summary_scores.get(aid, {})
-        
+
         if sub:
             submission_payload = {
                 "submitted_at": str(sub.get("submitted_at", "")).strip(),
                 "late": str(sub.get("late", "")).strip(),
                 "auto_score": str(sub.get("auto_score", "")).strip(),
-                "score": score_from_sheet.get("score", "") or str(sub.get("score", "")).strip(),
-                "teacher_comment": score_from_sheet.get("teacher_comment", "") or str(sub.get("teacher_comment", "")).strip(),
+                "score": str(sub.get("score", "")).strip(),
+                "teacher_comment": str(sub.get("teacher_comment", "")).strip(),
                 "checked_at": str(sub.get("checked_at", "")).strip(),
                 "file_url": str(sub.get("file_url", "")).strip(),
                 "can_edit": item["can_edit_submission"],
-            }
-            item["submission"] = submission_payload
-        elif score_from_sheet:
-            # ไม่มี submission แต่มีคะแนนในชีต
-            submission_payload = {
-                "submitted_at": "",
-                "late": "",
-                "auto_score": "",
-                "score": score_from_sheet.get("score", ""),
-                "teacher_comment": score_from_sheet.get("teacher_comment", ""),
-                "checked_at": "",
-                "file_url": "",
-                "can_edit": False,
             }
             item["submission"] = submission_payload
         else:
@@ -6423,6 +6829,30 @@ def api_student_assignments():
         "success": True,
         "student": student,
         "assignments": result,
+    })
+
+
+@app.route("/api/student/assignment-summary-scores")
+def api_student_assignment_summary_scores():
+    student_line_user_id = request.args.get("student_line_user_id", "").strip()
+    student = get_student_by_line_user_id(student_line_user_id)
+    if not student:
+        return jsonify({
+            "success": False,
+            "message": "ยังไม่พบข้อมูลนักเรียน กรุณาลงทะเบียนก่อน",
+        })
+
+    classroom = str(student.get("classroom", "")).strip()
+    assignments = get_assignments_by_classroom(classroom)
+    summary_scores = get_classroom_summary_scores_for_student(
+        classroom,
+        student_line_user_id,
+        assignments,
+    )
+
+    return jsonify({
+        "success": True,
+        "scores": summary_scores,
     })
 
 
@@ -6475,52 +6905,11 @@ def api_student_scores():
         submissions = get_submissions_by_student(student_line_user_id)
         submission_dict = {str(s.get("assignment_id", "")).strip(): s for s in submissions}
 
-        # ดึงคะแนนจากชีตสรุปห้องเพื่อให้เห็นคะแนนที่ยังไม่ซิงก์
-        classroom_summary_scores = {}
-        try:
-            summary_ws = get_worksheet(classroom_sheet_name(classroom))
-            summary_values = summary_ws.get_all_values()
-            if len(summary_values) > 3:
-                summary_header_row = summary_values[2] if len(summary_values) > 2 else []
-                try:
-                    assignment_start_idx = next(
-                        i for i, value in enumerate(summary_header_row)
-                        if str(value).strip() == "ตรวจเวลา"
-                    )
-                except StopIteration:
-                    assignment_start_idx = 3
-
-                summary_has_auto_score = (
-                    len(summary_header_row) > assignment_start_idx + 2
-                    and str(summary_header_row[assignment_start_idx + 2]).strip() == "คะแนนส่ง"
-                )
-                assignment_col_count = 6 if summary_has_auto_score else 5
-                score_offset = 3 if summary_has_auto_score else 2
-                comment_offset = 4 if summary_has_auto_score else 3
-
-                for sheet_row, row in enumerate(summary_values[3:]):
-                    if len(row) < 3:
-                        continue
-                    sheet_student_id = str(row[2]).strip()
-                    if sheet_student_id != student_line_user_id:
-                        continue
-
-                    for idx, assignment in enumerate(assignments):
-                        assignment_id = str(assignment.get("assignment_id", "")).strip()
-                        if not assignment_id:
-                            continue
-                        score_idx = assignment_start_idx + idx * assignment_col_count + score_offset
-                        comment_idx = assignment_start_idx + idx * assignment_col_count + comment_offset
-                        score = str(row[score_idx]).strip() if score_idx < len(row) else ""
-                        comment = str(row[comment_idx]).strip() if comment_idx < len(row) else ""
-                        if score or comment:
-                            classroom_summary_scores[assignment_id] = {
-                                "score": score,
-                                "teacher_comment": comment,
-                            }
-                    break
-        except Exception as e:
-            pass
+        classroom_summary_scores = get_classroom_summary_scores_for_student(
+            classroom,
+            student_line_user_id,
+            assignments,
+        )
 
         scores = []
         for a in assignments:
@@ -6696,8 +7085,8 @@ def api_student_pending():
 
     classroom = str(student.get("classroom", "")).strip()
     assignments = get_assignments_by_classroom(classroom)
-    submissions = get_submissions_by_student(student_line_user_id)
-    submitted_ids = set(str(s.get("assignment_id", "")).strip() for s in submissions)
+    submitted_ids = student_submitted_assignment_ids(student_line_user_id)
+    now = now_dt()
 
     pending = []
     submitted = []
@@ -6705,6 +7094,8 @@ def api_student_pending():
     for a in assignments:
         aid = str(a.get("assignment_id", "")).strip()
         if not assignment_requires_submission(a):
+            continue
+        if not assignment_is_open_for_submission(a, now):
             continue
         if aid in submitted_ids:
             submitted.append(student_assignment_payload(a))
@@ -6796,9 +7187,9 @@ def api_student_submit():
         allowed_exts = get_assignment_allowed_file_exts(assignment)
         allow_link_submission = assignment_allows_link(assignment)
 
-        old_submission_row, old_submission = find_submission_row(student_line_user_id, assignment_id)
+        old_submission = get_submission_from_db(student_line_user_id, assignment_id)
         if not old_submission:
-            old_submission = get_submission_from_db(student_line_user_id, assignment_id)
+            _, old_submission = find_submission_row(student_line_user_id, assignment_id)
         if old_submission:
             if not submission_edit_allowed(assignment):
                 return jsonify({
@@ -6914,6 +7305,14 @@ def api_student_submit():
         submission_db_saved = save_submission_to_db(submission_db_payload)
 
         if submission_db_saved:
+            _schedule_background_task(
+                _background_sync_submission_to_sheets,
+                submission_db_payload,
+            )
+            try:
+                update_student_rich_menu(student_line_user_id)
+            except Exception as e:
+                print("[update_student_rich_menu after submit] Error:", e)
             return jsonify({
                 "success": True,
                 "message": "รับงานเรียบร้อยแล้ว ระบบจะซิงก์เข้า Google Sheets อัตโนมัติ",
@@ -6924,7 +7323,10 @@ def api_student_submit():
             })
 
         action = write_submission_to_sheets(submission_db_payload)
-        update_student_rich_menu(student_line_user_id)
+        try:
+            update_student_rich_menu(student_line_user_id)
+        except Exception as e:
+            print("[update_student_rich_menu after submit] Error:", e)
 
         return jsonify({
             "success": True,
@@ -7495,6 +7897,134 @@ LINE_MENTION_LIMIT_PER_MESSAGE = 20
 LINE_PUSH_MESSAGES_PER_REQUEST = 5
 DEADLINE_LOG_TYPE_NOTICE = "deadline_notice"
 DEADLINE_LOG_TYPE_PENDING = "pending_reminder"
+PENDING_REMINDER_INTERVAL_DAYS = int(os.getenv("PENDING_REMINDER_INTERVAL_DAYS", "15") or "15")
+_recent_deadline_logs = {}
+_recent_deadline_logs_lock = threading.Lock()
+
+
+def _deadline_log_key(assignment_id, classroom, notification_type=""):
+    return (
+        str(assignment_id or "").strip(),
+        normalize_classroom_text(classroom),
+        str(notification_type or "").strip(),
+    )
+
+
+def _parse_deadline_log_datetime(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text[:19], fmt).replace(tzinfo=TZ)
+        except ValueError:
+            continue
+    return None
+
+
+def _days_since_deadline_log(record):
+    logged_at = _parse_deadline_log_datetime(record.get("created_at"))
+    if not logged_at:
+        return None
+    return (today_date() - logged_at.date()).days
+
+
+def _deadline_log_in_cooldown(record, interval_days):
+    days_since = _days_since_deadline_log(record)
+    if days_since is None:
+        return False
+    return days_since < max(1, int(interval_days or 1))
+
+
+def _latest_matching_deadline_log(assignment_id, classroom, notification_type=None, count_legacy=False):
+    assignment_id = str(assignment_id or "").strip()
+    classroom = normalize_classroom_text(classroom)
+    notification_type = str(notification_type or "").strip()
+
+    latest_record = None
+    latest_logged_at = None
+
+    for r in get_sheet_records("deadline_logs"):
+        if (
+            str(r.get("assignment_id", "")).strip() != assignment_id
+            or normalize_classroom_text(r.get("classroom", "")) != classroom
+        ):
+            continue
+
+        row_type = str(r.get("notification_type", "")).strip()
+        if notification_type:
+            if row_type != notification_type:
+                if not (count_legacy and not row_type):
+                    continue
+
+        logged_at = _parse_deadline_log_datetime(r.get("created_at"))
+        if logged_at is None:
+            continue
+        if latest_logged_at is None or logged_at > latest_logged_at:
+            latest_logged_at = logged_at
+            latest_record = r
+
+    return latest_record
+
+
+def _remember_deadline_log(assignment_id, classroom, notification_type):
+    key = _deadline_log_key(assignment_id, classroom, notification_type)
+    with _recent_deadline_logs_lock:
+        _recent_deadline_logs[key] = now_dt()
+
+
+def _prune_recent_deadline_logs():
+    with _recent_deadline_logs_lock:
+        expired_keys = []
+        for key, logged_at in _recent_deadline_logs.items():
+            days_since = (today_date() - logged_at.date()).days
+            interval_days = (
+                PENDING_REMINDER_INTERVAL_DAYS
+                if key[2] == DEADLINE_LOG_TYPE_PENDING
+                else 3650
+            )
+            if days_since >= interval_days:
+                expired_keys.append(key)
+        for key in expired_keys:
+            _recent_deadline_logs.pop(key, None)
+
+
+def _recent_deadline_log_in_cooldown(assignment_id, classroom, notification_type=None, count_legacy=False):
+    assignment_id = str(assignment_id or "").strip()
+    classroom = normalize_classroom_text(classroom)
+    notification_type = str(notification_type or "").strip()
+
+    _prune_recent_deadline_logs()
+
+    with _recent_deadline_logs_lock:
+        if not notification_type:
+            for key, logged_at in _recent_deadline_logs.items():
+                if key[0] == assignment_id and key[1] == classroom:
+                    return True
+            return False
+
+        logged_at = _recent_deadline_logs.get(
+            _deadline_log_key(assignment_id, classroom, notification_type)
+        )
+        if logged_at and notification_type == DEADLINE_LOG_TYPE_PENDING:
+            days_since = (today_date() - logged_at.date()).days
+            return days_since < PENDING_REMINDER_INTERVAL_DAYS
+        if logged_at:
+            return True
+
+        if count_legacy:
+            for key, legacy_logged_at in _recent_deadline_logs.items():
+                if key[0] != assignment_id or key[1] != classroom or key[2]:
+                    continue
+                if notification_type == DEADLINE_LOG_TYPE_PENDING:
+                    days_since = (today_date() - legacy_logged_at.date()).days
+                    if days_since < PENDING_REMINDER_INTERVAL_DAYS:
+                        return True
+                else:
+                    return True
+
+    return False
 
 
 def deadline_log_exists(assignment_id, classroom, notification_type=None, count_legacy=False):
@@ -7503,6 +8033,20 @@ def deadline_log_exists(assignment_id, classroom, notification_type=None, count_
     notification_type = str(notification_type or "").strip()
 
     if not assignment_id or not classroom:
+        return False
+
+    if _recent_deadline_log_in_cooldown(assignment_id, classroom, notification_type, count_legacy):
+        return True
+
+    if notification_type == DEADLINE_LOG_TYPE_PENDING:
+        latest = _latest_matching_deadline_log(
+            assignment_id,
+            classroom,
+            notification_type,
+            count_legacy,
+        )
+        if latest and _deadline_log_in_cooldown(latest, PENDING_REMINDER_INTERVAL_DAYS):
+            return True
         return False
 
     for r in get_sheet_records("deadline_logs"):
@@ -7523,23 +8067,42 @@ def deadline_log_exists(assignment_id, classroom, notification_type=None, count_
     return False
 
 
-def append_deadline_log(assignment_id, classroom, group_id, message, notification_type):
+def append_deadline_log(assignment_id, classroom, group_id, message, notification_type, remember=True):
+    assignment_id = str(assignment_id or "").strip()
+    classroom = normalize_classroom_text(classroom)
+    notification_type = str(notification_type or "").strip()
+    if remember:
+        _remember_deadline_log(assignment_id, classroom, notification_type)
+
     ws = get_worksheet("deadline_logs")
     headers = ensure_headers(ws, BASE_SHEETS["deadline_logs"])
-    buffered_append_row(
-        ws,
-        row_values_for_headers(headers, {
-            "log_id": "dl_" + uuid.uuid4().hex[:12],
-            "created_at": now_text(),
-            "assignment_id": str(assignment_id or "").strip(),
-            "classroom": normalize_classroom_text(classroom),
-            "group_id": str(group_id or "").strip(),
-            "notification_type": str(notification_type or "").strip(),
-            "message": str(message or ""),
-        }),
-        value_input_option="RAW",
+    row_values = row_values_for_headers(headers, {
+        "log_id": "dl_" + uuid.uuid4().hex[:12],
+        "created_at": now_text(),
+        "assignment_id": assignment_id,
+        "classroom": classroom,
+        "group_id": str(group_id or "").strip(),
+        "notification_type": notification_type,
+        "message": str(message or ""),
+    })
+    call_google_sheet_api(
+        lambda: ws.append_row(row_values, value_input_option="RAW")
     )
     invalidate_sheet_cache("deadline_logs")
+
+
+def _append_deadline_log_background(assignment_id, classroom, group_id, message, notification_type):
+    try:
+        append_deadline_log(
+            assignment_id,
+            classroom,
+            group_id,
+            message,
+            notification_type,
+            remember=False,
+        )
+    except Exception as e:
+        print("[append_deadline_log background] Error:", e)
 
 
 def student_submission_from_index(student, assignment_id, submission_index):
@@ -7586,7 +8149,6 @@ def build_deadline_mention_messages(classroom, assignment, pending_students):
                 f"กำหนดส่ง: {due_text}\n\n"
                 "ไม่มีนักเรียนค้างส่งแล้ว"
             ),
-            "notificationDisabled": False,
         }]
 
     student_chunks = list(chunks(pending_students, LINE_MENTION_LIMIT_PER_MESSAGE))
@@ -7594,56 +8156,26 @@ def build_deadline_mention_messages(classroom, assignment, pending_students):
     total_chunks = len(student_chunks)
 
     for chunk_index, student_chunk in enumerate(student_chunks, start=1):
-        has_mentions = any(
-            student_notification_line_user_id(student)
-            for student in student_chunk
-        )
-        classroom_text = escape_text_v2(classroom) if has_mentions else str(classroom)
-        title_text = escape_text_v2(title) if has_mentions else title
-        due_text_display = escape_text_v2(due_text) if has_mentions else due_text
-        chunk_title = ""
-        if total_chunks > 1:
-            chunk_title = f" ชุด {chunk_index}/{total_chunks}"
+        chunk_title = f" ชุด {chunk_index}/{total_chunks}" if total_chunks > 1 else ""
+        lines = []
+        for student in student_chunk:
+            label = pending_student_label(student)
+            if student_notification_line_user_id(student):
+                lines.append(f"- {label}")
+            else:
+                lines.append(f"- {label} (ยังไม่ได้ผูก LINE)")
 
         text = (
-            f"แจ้งเตือนส่งงาน ห้อง {classroom_text}{chunk_title}\n\n"
-            f"งาน: {title_text}\n"
-            f"กำหนดส่ง: {due_text_display}\n\n"
+            f"แจ้งเตือนส่งงาน ห้อง {classroom}{chunk_title}\n\n"
+            f"งาน: {title}\n"
+            f"กำหนดส่ง: {due_text}\n\n"
             "นักเรียนที่ยังไม่ส่ง:\n"
+            + "\n".join(lines)
         )
-        substitution = {}
-
-        for student_index, student in enumerate(student_chunk, start=1):
-            user_id = student_notification_line_user_id(student)
-            label = pending_student_label(student)
-            label_text = escape_text_v2(label) if has_mentions else label
-
-            if user_id:
-                key = f"m{chunk_index}_{student_index}"
-                text += "- " + label_text + " {" + key + "}\n"
-                substitution[key] = {
-                    "type": "mention",
-                    "mentionee": {
-                        "type": "user",
-                        "userId": user_id,
-                    },
-                }
-            else:
-                text += f"- {label_text} (ยังไม่ได้ผูก LINE)\n"
-
-        if substitution:
-            messages.append({
-                "type": "textV2",
-                "text": text,
-                "substitution": substitution,
-                "notificationDisabled": False,
-            })
-        else:
-            messages.append({
-                "type": "text",
-                "text": text,
-                "notificationDisabled": False,
-            })
+        messages.append({
+            "type": "text",
+            "text": text,
+        })
 
     return messages
 
@@ -7753,6 +8285,8 @@ def notify_deadline_for_assignment(
             "notification_type": notification_type,
         }
 
+    _remember_deadline_log(assignment_id, classroom, notification_type)
+
     students = get_students_by_classroom(classroom)
     student_line_user_ids = student_line_user_ids_for_records(students)
     submission_index = get_submissions_index(
@@ -7790,12 +8324,12 @@ def notify_deadline_for_assignment(
     due_dt = assignment_due_datetime(assignment)
     overdue = bool(due_dt and now_dt().replace(tzinfo=None) > due_dt)
     private_text = build_deadline_private_text(classroom, assignment, overdue=overdue)
+    private_user_ids = []
     private_results = []
 
     for s in pending_students:
         sid = student_notification_line_user_id(s)
         student_name = str(s.get("student_name", "")).strip()
-
         if not sid:
             private_results.append({
                 "student_name": student_name,
@@ -7803,31 +8337,40 @@ def notify_deadline_for_assignment(
                 "message": "missing_student_line_user_id",
             })
             continue
+        private_user_ids.append(sid)
 
-        private_res = push_message(sid, private_text)
-        private_results.append({
-            "student_name": student_name,
-            "status": private_res.status_code if private_res else None,
-            "text": private_res.text if private_res else None,
-        })
-
-    private_sent_count = sum(
-        1
-        for r in private_results
-        if r.get("status") and 200 <= int(r.get("status")) < 300
+    private_multicast_results = push_multicast(
+        private_user_ids,
+        [{"type": "text", "text": private_text}],
     )
+    private_sent_count = sum(
+        result.get("recipient_count", 0)
+        for result in private_multicast_results
+        if result.get("status") and 200 <= int(result.get("status")) < 300
+    )
+    if not private_multicast_results and private_user_ids:
+        for sid in private_user_ids:
+            private_res = push_message(sid, private_text)
+            if private_res and 200 <= private_res.status_code < 300:
+                private_sent_count += 1
+            private_results.append({
+                "student_line_user_id": sid,
+                "status": private_res.status_code if private_res else None,
+                "text": private_res.text if private_res else None,
+            })
 
-    # log
-    try:
-        append_deadline_log(
-            assignment_id,
-            classroom,
-            group_id,
-            deadline_messages_log_text(group_messages) + f"\n\nส่งไลน์ส่วนตัวสำเร็จ {private_sent_count}/{len(pending_students)} คน",
-            notification_type,
-        )
-    except Exception as e:
-        print("[deadline log] Error:", e)
+    log_message = (
+        deadline_messages_log_text(group_messages)
+        + f"\n\nส่งไลน์ส่วนตัวสำเร็จ {private_sent_count}/{len(pending_students)} คน"
+    )
+    _schedule_background_task(
+        _append_deadline_log_background,
+        assignment_id,
+        classroom,
+        group_id,
+        log_message,
+        notification_type,
+    )
 
     group_sent_count = sum(
         1
@@ -8081,7 +8624,7 @@ def webhook():
                     reply_messages(reply_token, [flex])
 
                 elif (
-                    command in ["UU", "SS"]
+                    command in ["UU", "SS", "RH"]
                     or command.startswith("UU ")
                     or command.startswith("UU:")
                     or command.startswith("UU：")
@@ -8090,12 +8633,18 @@ def webhook():
                     or command.startswith("SS:")
                     or command.startswith("SS：")
                     or command.startswith("SS-")
+                    or command.startswith("RH ")
+                    or command.startswith("RH:")
+                    or command.startswith("RH：")
+                    or command.startswith("RH-")
                     or text.startswith("ทดสอบแจ้งเตือน")
                     or text.startswith("อัปเดตชีต")
                     or text.startswith("อัพเดตชีต")
                     or text.startswith("ซิงก์คะแนน")
                     or text.startswith("ซิ้งคะแนน")
                     or text.startswith("sync คะแนน")
+                    or text.startswith("เรียงหัวชีต")
+                    or text.startswith("เรียงชีต")
                 ):
                     reply_message(
                         reply_token,
@@ -8320,6 +8869,39 @@ def webhook():
                                     failed_rooms = [f"{r['classroom']} ({r['message']})" for r in result["failed"]]
                                     text_lines.append("ไม่สำเร็จ: " + ", ".join(failed_rooms))
                                 reply_message(reply_token, "\n".join(text_lines))
+
+                elif (
+                    command == "RH"
+                    or command.startswith("RH ")
+                    or command.startswith("RH:")
+                    or command.startswith("RH：")
+                    or command.startswith("RH-")
+                    or text.startswith("เรียงหัวชีต")
+                    or text.startswith("เรียงชีต")
+                ):
+                    if not teacher:
+                        reply_message(reply_token, "คำสั่งนี้ใช้ได้เฉพาะครู")
+                    else:
+                        sheet_name = parse_sheet_header_command(
+                            text,
+                            ["เรียงหัวชีต", "เรียงชีต", "RH"],
+                        )
+                        if sheet_name:
+                            result = reorder_base_sheet_headers(sheet_name)
+                            reply_message(
+                                reply_token,
+                                result.get("message", "เรียงหัวตารางไม่สำเร็จ"),
+                            )
+                        else:
+                            _schedule_background_task(
+                                _reorder_all_sheets_background,
+                                user_id,
+                            )
+                            reply_message(
+                                reply_token,
+                                "เริ่มเรียงหัวตารางทุกชีตทีละชีตแล้ว\n"
+                                "ระบบจะแจ้งผลทางไลน์ส่วนตัวเมื่อเสร็จ",
+                            )
 
                 elif text.startswith("อัปเดตชีต") or text.startswith("อัพเดตชีต"):
                     if not teacher:
