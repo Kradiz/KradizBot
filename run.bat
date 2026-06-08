@@ -1,12 +1,5 @@
 @echo off
-
-git status
 git add .
-git commit -m "Add"
-
-if errorlevel 1 goto end
-
+git commit -m "Update"
 git push origin main
-
-:end
 pause
